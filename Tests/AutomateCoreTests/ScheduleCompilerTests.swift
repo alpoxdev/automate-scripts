@@ -124,6 +124,20 @@ final class ScheduleCompilerTests: XCTestCase {
         XCTAssertTrue(shellCommand.contains("printf %s"), shellCommand)
         XCTAssertTrue(shellCommand.contains("hello"), shellCommand)
         XCTAssertTrue(shellCommand.contains("/usr/bin/env"), shellCommand)
+        XCTAssertTrue(shellCommand.contains("exec '/usr/bin/env' '/bin/sh' '-c'"), shellCommand)
+    }
+
+    func testScheduledInputShellWrapperQuotesSingleQuotes() throws {
+        let job = ScriptJob(
+            name: "quoted-input",
+            command: "/bin/cat",
+            inputPolicy: ScriptInputPolicy(requirement: .required, defaultAnswer: "it\'s ok"),
+            schedule: .atLogin
+        )
+
+        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job))
+        let shellCommand = try XCTUnwrap(spec.programArguments.last)
+        XCTAssertTrue(shellCommand.contains("'it'\\''s ok\n'"), shellCommand)
     }
 
     func testScheduledNpxAutoConfirmAddsYesAndEnvironment() throws {

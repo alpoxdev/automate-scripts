@@ -86,6 +86,22 @@ final class CLIExecutableTests: XCTestCase {
         let overrideStdoutPath = try XCTUnwrap(runOverride.stdout.split(separator: "\n").first { $0.hasPrefix("stdout: ") }?.dropFirst("stdout: ".count))
         let overrideOutput = try String(contentsOfFile: String(overrideStdoutPath), encoding: .utf8)
         XCTAssertEqual(overrideOutput.trimmingCharacters(in: .whitespacesAndNewlines), "answer=override")
+
+        let editChoices = try runCLI(["--store", store, "edit", "stdinjob", "--no-input"])
+        XCTAssertEqual(editChoices.status, 0, editChoices.stdout + editChoices.stderr)
+        let addChoices = try runCLI([
+            "--store", store, "edit", "stdinjob",
+            "--answer-choice", "yes=y",
+            "--answer-choice", "no=n",
+            "--default-choice", "no",
+            "--input-required"
+        ])
+        XCTAssertEqual(addChoices.status, 0, addChoices.stdout + addChoices.stderr)
+        let runChoice = try runCLI(["--store", store, "run", "stdinjob", "--choice", "yes"])
+        XCTAssertEqual(runChoice.status, 0, runChoice.stdout + runChoice.stderr)
+        let choiceStdoutPath = try XCTUnwrap(runChoice.stdout.split(separator: "\n").first { $0.hasPrefix("stdout: ") }?.dropFirst("stdout: ".count))
+        let choiceOutput = try String(contentsOfFile: String(choiceStdoutPath), encoding: .utf8)
+        XCTAssertEqual(choiceOutput.trimmingCharacters(in: .whitespacesAndNewlines), "answer=y")
     }
 
     private func runCLI(_ arguments: [String]) throws -> (status: Int32, stdout: String, stderr: String) {
