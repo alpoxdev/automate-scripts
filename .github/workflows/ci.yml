@@ -2,16 +2,210 @@ name: CI
 
 on:
   push:
-  pull_request:
+    branches:
+      - deploy/prod
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   swift:
-    runs-on: macos-latest
+    name: Build, test, and package ${{ matrix.suffix }} DMG
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suffix: arm64
+            runner: macos-15
+          - suffix: x86_64
+            runner: macos-15-intel
     steps:
       - uses: actions/checkout@v4
+
       - name: Swift version
         run: swift --version
+
       - name: Test
         run: swift test
+
       - name: Build CLI
-        run: swift build --product automate
+        run: swift build -c release --product automate
+
+      - name: Build menu bar app
+        run: swift build -c release --product AutomateMenuBarApp
+
+      - name: Package DMG
+        shell: bash
+        env:
+          ARCH_SUFFIX: ${{ matrix.suffix }}
+        run: |
+          set -euo pipefail
+
+          bin_path="$(swift build -c release --show-bin-path)"
+          staging="dist/dmg-root"
+          app="$staging/Automate Scripts.app"
+
+          rm -rf dist
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$staging/bin"
+
+          cp "$bin_path/AutomateMenuBarApp" "$app/Contents/MacOS/AutomateMenuBarApp"
+          cp "$bin_path/automate" "$staging/bin/automate"
+          chmod +x "$app/Contents/MacOS/AutomateMenuBarApp" "$staging/bin/automate"
+
+          if [ -d "$bin_path/AutomateScripts_AutomateMenuBarApp.bundle" ]; then
+            cp -R "$bin_path/AutomateScripts_AutomateMenuBarApp.bundle/"* "$app/Contents/Resources/"
+          fi
+
+          cat > "$app/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>en</string>
+            <key>CFBundleExecutable</key>
+            <string>AutomateMenuBarApp</string>
+            <key>CFBundleIconFile</key>
+            <string>AutomateScripts</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.alpox.AutomateScripts</string>
+            <key>CFBundleName</key>
+            <string>Automate Scripts</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>0.1.0</string>
+            <key>CFBundleVersion</key>
+            <string>1</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>13.0</string>
+            <key>LSUIElement</key>
+            <true/>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+
+          cat > "$staging/README-INSTALL.txt" <<'TXT'
+          Automate Scripts
+
+          Install the menu bar app:
+          1. Drag "Automate Scripts.app" to /Applications.
+          2. Open it from /Applications.
+
+          Install the CLI manually:
+          sudo cp bin/automate /usr/local/bin/automate
+
+          These early builds are ad-hoc signed and may show macOS Gatekeeper warnings.
+          TXT
+
+          codesign --force --deep --sign - "$app"
+
+          mkdir -p dist/release
+          hdiutil create \
+            -volname "Automate Scripts" \
+            -srcfolder "$staging" \
+            -ov \
+            -format UDZO \
+            "dist/release/AutomateScripts-macos-${ARCH_SUFFIX}.dmg"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dmg-${{ matrix.suffix }}
+          path: dist/release/AutomateScripts-macos-${{ matrix.suffix }}.dmg
+          if-no-files-found: error
+
+  version:
+    name: Auto version and release
+    needs: swift
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/deploy/prod'
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download DMG artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-dmg-*
+          path: dist
+          merge-multiple: true
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve next version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          existing_head_tag="$(git tag --points-at "$GITHUB_SHA" --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)"
+          if [ -n "$existing_head_tag" ]; then
+            echo "tag=$existing_head_tag" >> "$GITHUB_OUTPUT"
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            echo "Using existing tag on HEAD: $existing_head_tag"
+            exit 0
+          fi
+
+          latest_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)"
+          if [ -z "$latest_tag" ]; then
+            next_tag="v0.1.0"
+          else
+            version="${latest_tag#v}"
+            IFS='.' read -r major minor patch <<< "$version"
+            next_tag="v${major}.${minor}.$((patch + 1))"
+          fi
+
+          git tag -a "$next_tag" -m "Release $next_tag" "$GITHUB_SHA"
+          git push origin "$next_tag"
+
+          echo "tag=$next_tag" >> "$GITHUB_OUTPUT"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+          echo "Created release tag: $next_tag"
+
+      - name: Prepare release assets
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for arch in arm64 x86_64; do
+            mv "dist/AutomateScripts-macos-${arch}.dmg" "dist/AutomateScripts-${TAG}-macos-${arch}.dmg"
+          done
+          find dist -type f -maxdepth 1 -name '*.dmg' -print -exec ls -lh {} \;
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already exists for $TAG; uploading DMG assets."
+          else
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "Automate Scripts $TAG" \
+              --generate-notes
+          fi
+
+          gh release upload "$TAG" dist/*.dmg --clobber
