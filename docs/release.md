@@ -7,4 +7,4 @@ Public alpha checklist:
 - Menu bar app builds on the supported Xcode/macOS version.
 - README examples work on a clean checkout.
 - No secrets or local absolute paths are committed.
-- LICENSE, SECURITY, CONTRIBUTING, and issue templates exist.
+- LICENSE and issue templates exist.
