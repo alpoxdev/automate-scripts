@@ -65,6 +65,7 @@ final class MenuBarModel: ObservableObject {
     let logStore = RunLogStore()
     let settingsStore = AppSettingsStore()
     private let runner = ScriptRunner()
+    private let scheduler = LaunchAgentScheduler()
     private let sudoSession = SudoSession()
 
     var localizer: Localizer { Localizer(language: language) }
@@ -84,6 +85,7 @@ final class MenuBarModel: ObservableObject {
         applyBackgroundMode()
         performLogMaintenance(showMessage: false)
         reload()
+        try? syncScheduler()
         authorizeSavedPrivilegedJobsIfNeeded()
     }
 
@@ -109,6 +111,7 @@ final class MenuBarModel: ObservableObject {
         do {
             try job.schedule.validate()
             try store.add(job)
+            try syncScheduler()
             lastMessage = String(format: localizer.text("job.added"), job.name)
             reload()
         } catch { lastMessage = error.localizedDescription }
@@ -126,6 +129,7 @@ final class MenuBarModel: ObservableObject {
         do {
             try job.schedule.validate()
             try store.update(job)
+            try syncScheduler()
             lastMessage = String(format: localizer.text("job.updated"), job.name)
             reload()
         } catch { lastMessage = error.localizedDescription }
@@ -165,6 +169,7 @@ final class MenuBarModel: ObservableObject {
     func delete(_ job: ScriptJob) {
         do {
             let removed = try store.remove(nameOrID: job.id.uuidString)
+            try syncScheduler()
             lastMessage = String(format: localizer.text("job.removed"), removed.name)
             reload()
         } catch { lastMessage = error.localizedDescription }
@@ -228,6 +233,7 @@ final class MenuBarModel: ObservableObject {
     func toggle(_ job: ScriptJob) {
         do {
             _ = try store.setEnabled(nameOrID: job.id.uuidString, enabled: !job.enabled)
+            try syncScheduler()
             reload()
         } catch { lastMessage = error.localizedDescription }
     }
@@ -271,5 +277,9 @@ final class MenuBarModel: ObservableObject {
 
     private func applyBackgroundMode() {
         NSApplication.shared.setActivationPolicy(settings.runsInBackground ? .accessory : .regular)
+    }
+
+    private func syncScheduler() throws {
+        _ = try scheduler.sync(jobs: store.list(), dryRun: false)
     }
 }

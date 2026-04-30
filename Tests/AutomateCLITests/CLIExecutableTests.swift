@@ -34,6 +34,14 @@ final class CLIExecutableTests: XCTestCase {
         XCTAssertEqual(sync.status, 0)
         XCTAssertTrue(sync.stdout.contains("Dry run: create/update=1"), sync.stdout + sync.stderr)
 
+        let applySync = try runCLI(["--store", store, "--lang", "en", "sync", "--apply"])
+        XCTAssertEqual(applySync.status, 0, applySync.stdout + applySync.stderr)
+        XCTAssertTrue(applySync.stdout.contains("dryRun=false"), applySync.stdout + applySync.stderr)
+        let launchAgentsDir = dir.appendingPathComponent("LaunchAgents", isDirectory: true)
+        let managedPlists = try FileManager.default.contentsOfDirectory(at: launchAgentsDir, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "plist" && $0.lastPathComponent.hasPrefix("com.alpox.automate-scripts.job") }
+        XCTAssertEqual(managedPlists.count, 1)
+
         XCTAssertEqual(try runCLI(["--store", store, "remove", "backup2"]).status, 0)
     }
 
