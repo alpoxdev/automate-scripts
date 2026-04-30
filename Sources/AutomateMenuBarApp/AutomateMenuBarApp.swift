@@ -53,6 +53,26 @@ private struct MenuBarStatusIcon: View {
 }
 
 @MainActor
+enum AppUpdateState {
+    case idle
+    case checking
+    case upToDate(String)
+    case available(release: GitHubRelease, asset: GitHubReleaseAsset)
+    case noCompatibleAsset(String)
+    case developmentBuild(String)
+    case installing(String)
+    case restarting
+    case failed(String)
+
+    var isBusy: Bool {
+        switch self {
+        case .checking, .installing, .restarting: true
+        default: false
+        }
+    }
+}
+
+@MainActor
 final class MenuBarModel: ObservableObject {
     @Published var jobs: [ScriptJob] = []
     @Published var latestRecords: [UUID: RunRecord] = [:]
@@ -60,13 +80,17 @@ final class MenuBarModel: ObservableObject {
     @Published var lastMessage: String = ""
     @Published var language: AppLanguage = .system()
     @Published var settings: AppSettings
+    @Published var updateState: AppUpdateState = .idle
 
     let store = JobStore()
     let logStore = RunLogStore()
     let settingsStore = AppSettingsStore()
+    let appVersion = AppVersion.current()
     private let runner = ScriptRunner()
     private let scheduler = LaunchAgentScheduler()
     private let sudoSession = SudoSession()
+    private let releaseUpdater = GitHubReleaseUpdater()
+    private let updateInstaller = AppRelaunchInstaller()
 
     var localizer: Localizer { Localizer(language: language) }
     var hasFailures: Bool { latestRecords.values.contains { $0.exitCode != 0 || $0.timedOut } }
@@ -87,6 +111,7 @@ final class MenuBarModel: ObservableObject {
         reload()
         try? syncScheduler()
         authorizeSavedPrivilegedJobsIfNeeded()
+        checkForUpdates()
     }
 
     func reload() {
@@ -97,6 +122,85 @@ final class MenuBarModel: ObservableObject {
                 return (job.id, record)
             })
         } catch { lastMessage = error.localizedDescription }
+    }
+
+    func checkForUpdates() {
+        guard !updateState.isBusy else { return }
+        updateState = .checking
+        let updater = releaseUpdater
+        let localVersion = appVersion.semanticVersion
+        Task {
+            do {
+                let release = try await updater.fetchLatestRelease()
+                let availability = updater.availability(localVersion: localVersion, release: release)
+                await MainActor.run {
+                    switch availability {
+                    case .upToDate(_, let remote):
+                        self.updateState = .upToDate(remote.tagDescription)
+                    case .updateAvailable(let release, let asset):
+                        self.updateState = .available(release: release, asset: asset)
+                    case .noCompatibleAsset(let release):
+                        self.updateState = .noCompatibleAsset(release.tagName)
+                    case .localDevelopmentBuild(let release):
+                        self.updateState = .developmentBuild(release.tagName)
+                    case .invalidRemoteVersion(let tag):
+                        self.updateState = .failed(String(format: self.localizer.text("update.invalidVersion"), tag))
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.updateState = .failed(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func installAvailableUpdate() {
+        guard case .available(let release, let asset) = updateState else { return }
+        let checksumAsset = releaseUpdater.checksumAsset(for: asset, in: release)
+        updateState = .installing(release.tagName)
+        Task {
+            do {
+                try await updateInstaller.downloadVerifyAndPrepareRelaunch(
+                    release: release,
+                    asset: asset,
+                    checksumAsset: checksumAsset
+                )
+                await MainActor.run {
+                    self.updateState = .restarting
+                    self.lastMessage = self.localizer.text("update.restartSoon")
+                    NSApplication.shared.terminate(nil)
+                }
+            } catch {
+                await MainActor.run {
+                    self.updateState = .failed(error.localizedDescription)
+                    self.lastMessage = String(format: self.localizer.text("update.failed"), error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func updateStatusText(localizer: Localizer) -> String {
+        switch updateState {
+        case .idle:
+            localizer.text("update.idle")
+        case .checking:
+            localizer.text("update.checking")
+        case .upToDate:
+            localizer.text("update.upToDate")
+        case .available(let release, _):
+            String(format: localizer.text("update.available"), release.tagName)
+        case .noCompatibleAsset(let tag):
+            String(format: localizer.text("update.noCompatibleAsset"), tag)
+        case .developmentBuild(let tag):
+            String(format: localizer.text("update.developmentBuild"), tag)
+        case .installing(let tag):
+            String(format: localizer.text("update.installing"), tag)
+        case .restarting:
+            localizer.text("update.restartSoon")
+        case .failed(let message):
+            String(format: localizer.text("update.failed"), message)
+        }
     }
 
     func add(_ job: ScriptJob) {

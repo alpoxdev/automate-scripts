@@ -168,6 +168,18 @@ public struct Localizer: Sendable {
             "status.ready": "Ready",
             "language.english": "English",
             "language.korean": "Korean",
+            "update.version": "Version %@",
+            "update.idle": "Update check is idle.",
+            "update.checking": "Checking for updates…",
+            "update.upToDate": "Automate Scripts is up to date.",
+            "update.available": "Update %@ is available.",
+            "update.button": "Update",
+            "update.installing": "Installing %@…",
+            "update.noCompatibleAsset": "Update %@ is available, but no compatible download was found.",
+            "update.developmentBuild": "Development build; latest release is %@.",
+            "update.failed": "Update failed: %@",
+            "update.invalidVersion": "Release tag is not a semantic version: %@",
+            "update.restartSoon": "Restarting to finish update…",
             "error.rawCronUnsupported": "Raw cron expressions are not supported in the default UX. Use schedule presets."
         ],
         .korean: [
@@ -292,6 +304,18 @@ public struct Localizer: Sendable {
             "status.ready": "준비됨",
             "language.english": "영어",
             "language.korean": "한국어",
+            "update.version": "버전 %@",
+            "update.idle": "업데이트 확인 대기 중입니다.",
+            "update.checking": "업데이트 확인 중…",
+            "update.upToDate": "Automate Scripts가 최신 버전입니다.",
+            "update.available": "%@ 업데이트가 있습니다.",
+            "update.button": "업데이트",
+            "update.installing": "%@ 설치 중…",
+            "update.noCompatibleAsset": "%@ 업데이트가 있지만 호환되는 다운로드를 찾지 못했습니다.",
+            "update.developmentBuild": "개발 빌드입니다. 최신 릴리즈는 %@입니다.",
+            "update.failed": "업데이트 실패: %@",
+            "update.invalidVersion": "릴리즈 태그가 semantic version이 아닙니다: %@",
+            "update.restartSoon": "업데이트 완료를 위해 다시 시작합니다…",
             "error.rawCronUnsupported": "기본 UX에서는 cron 표현식을 직접 입력하지 않습니다. 스케줄 프리셋을 사용하세요."
         ]
     ]
