@@ -1,5 +1,113 @@
 import Foundation
 
+public struct ScriptAnswerChoice: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var label: String
+    public var value: String
+
+    public init(id: String? = nil, label: String, value: String) {
+        self.label = label
+        self.value = value
+        self.id = id ?? Self.makeID(from: label)
+    }
+
+    private static func makeID(from label: String) -> String {
+        let slug = label.lowercased().map { character -> Character in
+            character.isLetter || character.isNumber ? character : "-"
+        }.reduce("") { $0 + String($1) }
+        let trimmed = slug.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return trimmed.isEmpty ? UUID().uuidString : trimmed
+    }
+}
+
+public enum ScriptInputRequirement: String, Codable, Equatable, Sendable {
+    case none
+    case optional
+    case required
+}
+
+public struct ScriptRunInputSelection: Codable, Equatable, Sendable {
+    public var answer: String?
+    public var choiceID: String?
+    public var choiceLabel: String?
+
+    public init(answer: String? = nil, choiceID: String? = nil, choiceLabel: String? = nil) {
+        self.answer = answer
+        self.choiceID = choiceID
+        self.choiceLabel = choiceLabel
+    }
+}
+
+public struct ScriptInputPolicy: Codable, Equatable, Sendable {
+    public var requirement: ScriptInputRequirement
+    public var defaultAnswer: String?
+    public var answerChoices: [ScriptAnswerChoice]
+    public var defaultChoiceID: String?
+
+    public init(
+        requirement: ScriptInputRequirement = .none,
+        defaultAnswer: String? = nil,
+        answerChoices: [ScriptAnswerChoice] = [],
+        defaultChoiceID: String? = nil
+    ) {
+        self.requirement = requirement
+        self.defaultAnswer = defaultAnswer
+        self.answerChoices = answerChoices
+        self.defaultChoiceID = defaultChoiceID
+    }
+
+    public static let none = ScriptInputPolicy()
+
+    public var hasInput: Bool {
+        requirement != .none || defaultAnswer != nil || !answerChoices.isEmpty || defaultChoiceID != nil
+    }
+
+    public func resolvedAnswer(selection: ScriptRunInputSelection? = nil) throws -> String? {
+        if let explicit = selection?.answer {
+            return explicit
+        }
+        if let choiceID = selection?.choiceID {
+            guard let choice = answerChoices.first(where: { $0.id == choiceID }) else {
+                throw ScriptInputResolutionError.choiceNotFound(choiceID)
+            }
+            return choice.value
+        }
+        if let choiceLabel = selection?.choiceLabel {
+            guard let choice = answerChoices.first(where: { $0.label == choiceLabel || $0.id == choiceLabel }) else {
+                throw ScriptInputResolutionError.choiceNotFound(choiceLabel)
+            }
+            return choice.value
+        }
+        if let defaultChoiceID {
+            guard let choice = answerChoices.first(where: { $0.id == defaultChoiceID || $0.label == defaultChoiceID }) else {
+                throw ScriptInputResolutionError.choiceNotFound(defaultChoiceID)
+            }
+            return choice.value
+        }
+        if let defaultAnswer {
+            return defaultAnswer
+        }
+        if requirement == .required {
+            throw ScriptInputResolutionError.requiredAnswerMissing
+        }
+        return nil
+    }
+}
+
+public enum ScriptInputResolutionError: Error, LocalizedError, Equatable, Sendable {
+    case requiredAnswerMissing
+    case choiceNotFound(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .requiredAnswerMissing:
+            "This script requires an input answer, but no default or selected answer was provided."
+        case .choiceNotFound(let choice):
+            "Input answer choice not found: \(choice)"
+        }
+    }
+}
+
 public struct ScriptJob: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
@@ -9,6 +117,7 @@ public struct ScriptJob: Codable, Equatable, Identifiable, Sendable {
     public var workingDirectory: String?
     public var requiresAdministratorPrivileges: Bool
     public var environment: [String: String]
+    public var inputPolicy: ScriptInputPolicy
     public var schedule: SchedulePreset
     public var enabled: Bool
     public var tags: [String]
@@ -24,6 +133,7 @@ public struct ScriptJob: Codable, Equatable, Identifiable, Sendable {
         workingDirectory: String? = nil,
         requiresAdministratorPrivileges: Bool = false,
         environment: [String: String] = [:],
+        inputPolicy: ScriptInputPolicy = .none,
         schedule: SchedulePreset = .manualOnly,
         enabled: Bool = true,
         tags: [String] = [],
@@ -38,6 +148,7 @@ public struct ScriptJob: Codable, Equatable, Identifiable, Sendable {
         self.workingDirectory = workingDirectory
         self.requiresAdministratorPrivileges = requiresAdministratorPrivileges
         self.environment = environment
+        self.inputPolicy = inputPolicy
         self.schedule = schedule
         self.enabled = enabled
         self.tags = tags
@@ -54,6 +165,7 @@ public struct ScriptJob: Codable, Equatable, Identifiable, Sendable {
         case workingDirectory
         case requiresAdministratorPrivileges
         case environment
+        case inputPolicy
         case schedule
         case enabled
         case tags
@@ -71,6 +183,7 @@ public struct ScriptJob: Codable, Equatable, Identifiable, Sendable {
         workingDirectory = try container.decodeIfPresent(String.self, forKey: .workingDirectory)
         requiresAdministratorPrivileges = try container.decodeIfPresent(Bool.self, forKey: .requiresAdministratorPrivileges) ?? false
         environment = try container.decodeIfPresent([String: String].self, forKey: .environment) ?? [:]
+        inputPolicy = try container.decodeIfPresent(ScriptInputPolicy.self, forKey: .inputPolicy) ?? .none
         schedule = try container.decodeIfPresent(SchedulePreset.self, forKey: .schedule) ?? .manualOnly
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []

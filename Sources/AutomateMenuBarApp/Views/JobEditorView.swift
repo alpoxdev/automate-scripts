@@ -13,6 +13,10 @@ struct JobEditorView: View {
     @State private var arguments: String
     @State private var workingDirectory: String
     @State private var requiresAdministratorPrivileges: Bool
+    @State private var inputRequired: Bool
+    @State private var defaultAnswer: String
+    @State private var answerChoices: String
+    @State private var defaultChoice: String
     @State private var schedule: SchedulePreset
     @State private var showsAdvanced = false
 
@@ -31,6 +35,10 @@ struct JobEditorView: View {
         _arguments = State(initialValue: job?.arguments.joined(separator: " ") ?? "")
         _workingDirectory = State(initialValue: job?.workingDirectory ?? AppPaths.defaultWorkingDirectory().path)
         _requiresAdministratorPrivileges = State(initialValue: job?.requiresAdministratorPrivileges ?? false)
+        _inputRequired = State(initialValue: job?.inputPolicy.requirement == .required)
+        _defaultAnswer = State(initialValue: job?.inputPolicy.defaultAnswer ?? "")
+        _answerChoices = State(initialValue: Self.formatAnswerChoices(job?.inputPolicy.answerChoices ?? []))
+        _defaultChoice = State(initialValue: job?.inputPolicy.defaultChoiceID ?? "")
         _schedule = State(initialValue: job?.schedule ?? .manualOnly)
     }
 
@@ -95,6 +103,18 @@ struct JobEditorView: View {
             labeledTextField(localizer.text("field.workingDirectory"), text: $workingDirectory, prompt: AppPaths.defaultWorkingDirectory().path)
 
             VStack(alignment: .leading, spacing: 8) {
+                Toggle(localizer.text("field.inputRequired"), isOn: $inputRequired)
+                labeledTextField(localizer.text("field.defaultAnswer"), text: $defaultAnswer, prompt: "y")
+                labeledTextField(localizer.text("field.answerChoices"), text: $answerChoices, prompt: "yes=y, no=n")
+                labeledTextField(localizer.text("field.defaultChoice"), text: $defaultChoice, prompt: "yes")
+                Text(localizer.text("field.answerChoicesHelp"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
                 Text(localizer.text("schedule.picker.title"))
                     .font(.headline)
                 SchedulePickerView(schedule: $schedule, localizer: localizer)
@@ -155,6 +175,7 @@ struct JobEditorView: View {
             existingJob.arguments = invocation.arguments
             existingJob.workingDirectory = cwd.isEmpty ? nil : cwd
             existingJob.requiresAdministratorPrivileges = requiresAdministratorPrivileges
+            existingJob.inputPolicy = makeInputPolicy()
             existingJob.schedule = schedule
             return existingJob
         }
@@ -164,7 +185,38 @@ struct JobEditorView: View {
             arguments: invocation.arguments,
             workingDirectory: cwd.isEmpty ? nil : cwd,
             requiresAdministratorPrivileges: requiresAdministratorPrivileges,
+            inputPolicy: makeInputPolicy(),
             schedule: schedule
         )
+    }
+
+    private func makeInputPolicy() -> ScriptInputPolicy {
+        let answer = defaultAnswer.trimmingCharacters(in: .whitespacesAndNewlines)
+        let defaultChoiceID = defaultChoice.trimmingCharacters(in: .whitespacesAndNewlines)
+        let choices = Self.parseAnswerChoices(answerChoices)
+        let hasInput = inputRequired || !answer.isEmpty || !choices.isEmpty || !defaultChoiceID.isEmpty
+        guard hasInput else { return .none }
+        return ScriptInputPolicy(
+            requirement: inputRequired ? .required : .optional,
+            defaultAnswer: answer.isEmpty ? nil : answer,
+            answerChoices: choices,
+            defaultChoiceID: defaultChoiceID.isEmpty ? nil : defaultChoiceID
+        )
+    }
+
+    private static func parseAnswerChoices(_ text: String) -> [ScriptAnswerChoice] {
+        text.split(separator: ",")
+            .compactMap { raw -> ScriptAnswerChoice? in
+                let parts = raw.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                guard parts.count == 2 else { return nil }
+                let label = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+                let value = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !label.isEmpty else { return nil }
+                return ScriptAnswerChoice(label: label, value: value)
+            }
+    }
+
+    private static func formatAnswerChoices(_ choices: [ScriptAnswerChoice]) -> String {
+        choices.map { "\($0.label)=\($0.value)" }.joined(separator: ", ")
     }
 }

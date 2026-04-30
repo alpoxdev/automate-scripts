@@ -39,17 +39,19 @@ public enum ScheduleCompiler {
         try job.schedule.validate()
         guard job.schedule != .manualOnly else { return nil }
         let invocation = CommandLineParser.normalized(commandText: job.command, arguments: job.arguments)
+        let prepared = try CommandPreparation.prepare(invocation: invocation, job: job, context: .scheduled)
+        let commandArguments = scheduledProgramArguments(prepared: prepared, runnerPath: runnerPath, includeRunner: !job.requiresAdministratorPrivileges)
         let programArguments: [String]
         if job.requiresAdministratorPrivileges {
-            programArguments = ["/usr/bin/sudo", "-n", invocation.command] + invocation.arguments
+            programArguments = ["/usr/bin/sudo", "-n"] + commandArguments
         } else {
-            programArguments = [runnerPath, invocation.command] + invocation.arguments
+            programArguments = commandArguments
         }
         var spec = LaunchAgentSpec(
             label: label(for: job),
             programArguments: programArguments,
             workingDirectory: job.workingDirectory ?? AppPaths.defaultWorkingDirectory().path,
-            environment: job.environment,
+            environment: prepared.environment,
             standardOutPath: logDirectory.map { "\($0)/\(job.id.uuidString)-stdout.log" },
             standardErrorPath: logDirectory.map { "\($0)/\(job.id.uuidString)-stderr.log" }
         )
@@ -70,6 +72,20 @@ public enum ScheduleCompiler {
             spec.startCalendarInterval = [["Day": day, "Hour": hour, "Minute": minute]]
         }
         return spec
+    }
+
+    private static func scheduledProgramArguments(prepared: PreparedCommand, runnerPath: String, includeRunner: Bool) -> [String] {
+        let directArguments = [prepared.invocation.command] + prepared.invocation.arguments
+        let runnerArguments = [runnerPath] + directArguments
+        guard let standardInput = prepared.standardInput else {
+            return includeRunner ? runnerArguments : directArguments
+        }
+        let command = runnerArguments.map(shellQuote).joined(separator: " ")
+        return ["/bin/sh", "-c", "printf %s \(shellQuote(standardInput)) | exec \(command)"]
+    }
+
+    private static func shellQuote(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
     public static func propertyListDictionary(for spec: LaunchAgentSpec) -> [String: Any] {

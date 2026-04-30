@@ -9,41 +9,50 @@ public final class ScriptRunner: @unchecked Sendable {
         self.logStore = logStore
     }
 
-    @discardableResult public func run(_ job: ScriptJob) throws -> RunRecord {
+    @discardableResult public func run(_ job: ScriptJob, inputSelection: ScriptRunInputSelection? = nil) throws -> RunRecord {
         let invocation = CommandLineParser.normalized(commandText: job.command, arguments: job.arguments)
         guard !CommandSafety.isBlocked(command: invocation.command, arguments: invocation.arguments) else {
             throw ScriptRunnerError.blockedCommand(CommandSafety.warnings(command: invocation.command, arguments: invocation.arguments).joined(separator: " "))
         }
+        let prepared = try CommandPreparation.prepare(invocation: invocation, job: job, inputSelection: inputSelection)
         let output = try logStore.prepareOutputURLs(for: job)
         let started = Date()
         let process = Process()
         if job.requiresAdministratorPrivileges {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-            if invocation.command == "sudo" {
-                process.arguments = ["-n"] + invocation.arguments
-            } else if invocation.command.contains("/") {
-                process.arguments = ["-n", invocation.command] + invocation.arguments
+            if prepared.invocation.command == "sudo" {
+                process.arguments = ["-n"] + prepared.invocation.arguments
+            } else if prepared.invocation.command.contains("/") {
+                process.arguments = ["-n", prepared.invocation.command] + prepared.invocation.arguments
             } else {
-                process.arguments = ["-n", "/usr/bin/env", invocation.command] + invocation.arguments
+                process.arguments = ["-n", "/usr/bin/env", prepared.invocation.command] + prepared.invocation.arguments
             }
-        } else if invocation.command.contains("/") {
-            process.executableURL = URL(fileURLWithPath: invocation.command)
-            process.arguments = invocation.arguments
+        } else if prepared.invocation.command.contains("/") {
+            process.executableURL = URL(fileURLWithPath: prepared.invocation.command)
+            process.arguments = prepared.invocation.arguments
         } else {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = [invocation.command] + invocation.arguments
+            process.arguments = [prepared.invocation.command] + prepared.invocation.arguments
         }
         let workingDirectory = try job.workingDirectory.map { URL(fileURLWithPath: $0) } ?? AppPaths.ensureDefaultWorkingDirectory()
         process.currentDirectoryURL = workingDirectory
         var environment = ProcessInfo.processInfo.environment
-        job.environment.forEach { environment[$0.key] = $0.value }
+        prepared.environment.forEach { environment[$0.key] = $0.value }
         process.environment = environment
 
         let stdout = Pipe()
         let stderr = Pipe()
+        let stdin = prepared.standardInput.map { _ in Pipe() }
         process.standardOutput = stdout
         process.standardError = stderr
+        if let stdin {
+            process.standardInput = stdin
+        }
         try process.run()
+        if let input = prepared.standardInput, let data = input.data(using: .utf8), let stdin {
+            stdin.fileHandleForWriting.write(data)
+            try? stdin.fileHandleForWriting.close()
+        }
 
         let semaphore = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in semaphore.signal() }

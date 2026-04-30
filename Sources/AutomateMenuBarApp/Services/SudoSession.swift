@@ -16,12 +16,13 @@ actor SudoSession {
         try authorizeIfNeeded()
     }
 
-    func run(_ job: ScriptJob, logStore: RunLogStore, timeout: TimeInterval = 60 * 60) async throws -> RunRecord {
+    func run(_ job: ScriptJob, logStore: RunLogStore, timeout: TimeInterval = 60 * 60, inputSelection: ScriptRunInputSelection? = nil) async throws -> RunRecord {
         let invocation = CommandLineParser.normalized(commandText: job.command, arguments: job.arguments)
         guard !CommandSafety.isBlocked(command: invocation.command, arguments: invocation.arguments) else {
             throw ScriptRunnerError.blockedCommand(CommandSafety.warnings(command: invocation.command, arguments: invocation.arguments).joined(separator: " "))
         }
 
+        let prepared = try CommandPreparation.prepare(invocation: invocation, job: job, inputSelection: inputSelection)
         let output = try logStore.prepareOutputURLs(for: job)
         let exitURL = output.stdout.deletingPathExtension().appendingPathExtension("exit")
         try? FileManager.default.removeItem(at: exitURL)
@@ -31,8 +32,7 @@ actor SudoSession {
         let started = Date()
         let workingDirectory = try job.workingDirectory.map { URL(fileURLWithPath: $0) } ?? AppPaths.ensureDefaultWorkingDirectory()
         let script = Self.privilegedShellScript(
-            invocation: invocation,
-            environment: job.environment,
+            prepared: prepared,
             workingDirectory: workingDirectory,
             stdoutURL: output.stdout,
             stderrURL: output.stderr,
@@ -152,24 +152,24 @@ actor SudoSession {
     }
 
     private static func privilegedShellScript(
-        invocation: CommandInvocation,
-        environment envVars: [String: String],
+        prepared: PreparedCommand,
         workingDirectory: URL,
         stdoutURL: URL,
         stderrURL: URL,
         exitURL: URL
     ) -> String {
-        let tokens = invocation.command == "sudo" ? invocation.arguments : [invocation.command] + invocation.arguments
-        let environment = envVars
+        let tokens = prepared.invocation.command == "sudo" ? prepared.invocation.arguments : [prepared.invocation.command] + prepared.invocation.arguments
+        let environment = prepared.environment
             .sorted { $0.key < $1.key }
             .map { shellQuote("\($0.key)=\($0.value)") }
             .joined(separator: " ")
         let envPrefix = environment.isEmpty ? "/usr/bin/env" : "/usr/bin/env \(environment)"
         let command = ([envPrefix] + tokens.map(shellQuote)).joined(separator: " ")
+        let stdinPrefix = prepared.standardInput.map { "printf %s \(shellQuote($0)) | " } ?? ""
 
         return """
         cd \(shellQuote(workingDirectory.path)) || exit 125
-        \(command) > \(shellQuote(stdoutURL.path)) 2> \(shellQuote(stderrURL.path))
+        \(stdinPrefix)\(command) > \(shellQuote(stdoutURL.path)) 2> \(shellQuote(stderrURL.path))
         status=$?
         printf "%s" "$status" > \(shellQuote(exitURL.path))
         exit "$status"

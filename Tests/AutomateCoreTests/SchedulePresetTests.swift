@@ -39,7 +39,7 @@ final class LocalizerCoverageTests: XCTestCase {
     func testCoreUserFacingKeysExistInEnglishAndKorean() {
         let keys = [
             "common.reload", "common.settings", "common.quit", "common.run", "common.enable", "common.disable", "common.save",
-            "common.edit", "common.cancel", "common.choose", "common.logs", "field.name", "field.command", "field.arguments", "field.workingDirectory", "field.sudo", "field.sudoHelp",
+            "common.edit", "common.cancel", "common.choose", "common.logs", "field.name", "field.command", "field.arguments", "field.workingDirectory", "field.sudo", "field.sudoHelp", "field.inputRequired", "field.defaultAnswer", "field.answerChoices", "field.defaultChoice", "field.answerChoicesHelp",
             "panel.jobs", "panel.add", "panel.settings", "stat.jobs", "stat.enabled", "stat.failures", "stat.running",
             "empty.title", "empty.subtitle", "editor.addTitle", "editor.editTitle", "editor.subtitle", "editor.advanced",
             "settings.title", "settings.subtitle", "settings.language", "settings.launchAtLogin",
@@ -49,7 +49,7 @@ final class LocalizerCoverageTests: XCTestCase {
             "logs.title", "logs.historyTitle", "logs.back", "logs.runCount", "logs.allRuns", "logs.selectedRun", "logs.duration", "logs.noRuns", "logs.noRunsHelp", "logs.empty", "logs.stdout", "logs.stderr", "logs.reveal",
             "schedule.picker.title", "schedule.kind.manual", "schedule.kind.login", "schedule.kind.minutes", "schedule.kind.hourly", "schedule.kind.daily", "schedule.kind.weekly", "schedule.kind.monthly", "schedule.interval", "schedule.time", "schedule.weekday", "schedule.day", "schedule.cronHidden",
             "job.added", "job.updated", "job.addNew", "job.delete", "job.running", "job.lastFailure", "job.lastSuccess", "job.noRecentRuns",
-            "run.exitCode", "run.jobExit", "run.stdout", "run.stderr", "sudo.authorizing", "sudo.ready", "status.ready", "language.english", "language.korean"
+            "run.exitCode", "run.jobExit", "run.chooseAnswerTitle", "run.chooseAnswerMessage", "run.stdout", "run.stderr", "sudo.authorizing", "sudo.ready", "status.ready", "language.english", "language.korean"
         ]
         for language in AppLanguage.allCases {
             let localizer = Localizer(language: language)

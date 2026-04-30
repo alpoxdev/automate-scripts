@@ -172,14 +172,21 @@ final class MenuBarModel: ObservableObject {
 
     func run(_ job: ScriptJob) {
         guard !runningJobIDs.contains(job.id) else { return }
+        let inputSelection: ScriptRunInputSelection?
+        do {
+            inputSelection = try promptInputSelectionIfNeeded(for: job)
+        } catch {
+            lastMessage = error.localizedDescription
+            return
+        }
         runningJobIDs.insert(job.id)
         lastMessage = "\(localizer.text("common.run")): \(job.name)"
-        Task.detached(priority: .userInitiated) { [runner, sudoSession, job] in
+        Task.detached(priority: .userInitiated) { [runner, sudoSession, job, inputSelection] in
             do {
                 let record = if job.requiresAdministratorPrivileges {
-                    try await sudoSession.run(job, logStore: runner.logStore, timeout: runner.timeout)
+                    try await sudoSession.run(job, logStore: runner.logStore, timeout: runner.timeout, inputSelection: inputSelection)
                 } else {
-                    try runner.run(job)
+                    try runner.run(job, inputSelection: inputSelection)
                 }
                 await MainActor.run {
                     self.latestRecords[job.id] = record
@@ -193,6 +200,25 @@ final class MenuBarModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private func promptInputSelectionIfNeeded(for job: ScriptJob) throws -> ScriptRunInputSelection? {
+        let choices = job.inputPolicy.answerChoices
+        guard choices.count > 1 else { return nil }
+
+        let alert = NSAlert()
+        alert.messageText = localizer.text("run.chooseAnswerTitle")
+        alert.informativeText = String(format: localizer.text("run.chooseAnswerMessage"), job.name)
+        for choice in choices {
+            alert.addButton(withTitle: choice.label)
+        }
+        alert.addButton(withTitle: localizer.text("common.cancel"))
+        let response = alert.runModal()
+        let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        guard choices.indices.contains(index) else {
+            throw ScriptInputResolutionError.requiredAnswerMissing
+        }
+        return ScriptRunInputSelection(choiceID: choices[index].id)
     }
 
     func isRunning(_ job: ScriptJob) -> Bool {

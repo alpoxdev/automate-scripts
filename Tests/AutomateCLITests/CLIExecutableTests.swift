@@ -57,6 +57,37 @@ final class CLIExecutableTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: store))
     }
 
+
+    func testCLIConfiguresAndOverridesInputAnswer() throws {
+        let dir = try temporaryDirectory()
+        let store = dir.appendingPathComponent("jobs.json").path
+        let script = dir.appendingPathComponent("stdin.sh")
+        try """
+        #!/bin/sh
+        read answer
+        echo answer=$answer
+        """.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+
+        let add = try runCLI(["--store", store, "add", "stdinjob", "--cmd", script.path, "--answer", "hello", "--input-required"])
+        XCTAssertEqual(add.status, 0, add.stdout + add.stderr)
+        let storedJSON = try String(contentsOfFile: store, encoding: .utf8)
+        XCTAssertTrue(storedJSON.contains("inputPolicy"), storedJSON)
+        XCTAssertTrue(storedJSON.contains("hello"), storedJSON)
+
+        let runDefault = try runCLI(["--store", store, "run", "stdinjob"])
+        XCTAssertEqual(runDefault.status, 0, runDefault.stdout + runDefault.stderr)
+        let defaultStdoutPath = try XCTUnwrap(runDefault.stdout.split(separator: "\n").first { $0.hasPrefix("stdout: ") }?.dropFirst("stdout: ".count))
+        let defaultOutput = try String(contentsOfFile: String(defaultStdoutPath), encoding: .utf8)
+        XCTAssertEqual(defaultOutput.trimmingCharacters(in: .whitespacesAndNewlines), "answer=hello")
+
+        let runOverride = try runCLI(["--store", store, "run", "stdinjob", "--answer", "override"])
+        XCTAssertEqual(runOverride.status, 0, runOverride.stdout + runOverride.stderr)
+        let overrideStdoutPath = try XCTUnwrap(runOverride.stdout.split(separator: "\n").first { $0.hasPrefix("stdout: ") }?.dropFirst("stdout: ".count))
+        let overrideOutput = try String(contentsOfFile: String(overrideStdoutPath), encoding: .utf8)
+        XCTAssertEqual(overrideOutput.trimmingCharacters(in: .whitespacesAndNewlines), "answer=override")
+    }
+
     private func runCLI(_ arguments: [String]) throws -> (status: Int32, stdout: String, stderr: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: productsDirectory().appendingPathComponent("automate").path)

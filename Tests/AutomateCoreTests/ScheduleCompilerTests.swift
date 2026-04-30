@@ -95,6 +95,49 @@ final class ScheduleCompilerTests: XCTestCase {
         ])
     }
 
+
+    func testScheduledRequiredInputWithoutDefaultFailsFast() throws {
+        let job = ScriptJob(
+            name: "needs-input",
+            command: "/bin/cat",
+            inputPolicy: ScriptInputPolicy(requirement: .required),
+            schedule: .atLogin
+        )
+        XCTAssertThrowsError(try ScheduleCompiler.compile(job: job)) { error in
+            XCTAssertEqual(error as? ScriptInputResolutionError, .requiredAnswerMissing)
+        }
+    }
+
+    func testScheduledInputDefaultUsesShellWrapper() throws {
+        let job = ScriptJob(
+            name: "scheduled-input",
+            command: "/bin/sh",
+            arguments: ["-c", "read answer; echo $answer"],
+            inputPolicy: ScriptInputPolicy(requirement: .required, defaultAnswer: "hello"),
+            schedule: .atLogin
+        )
+
+        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job))
+        XCTAssertEqual(spec.programArguments.first, "/bin/sh")
+        XCTAssertEqual(spec.programArguments.dropFirst().first, "-c")
+        let shellCommand = try XCTUnwrap(spec.programArguments.last)
+        XCTAssertTrue(shellCommand.contains("printf %s"), shellCommand)
+        XCTAssertTrue(shellCommand.contains("hello"), shellCommand)
+        XCTAssertTrue(shellCommand.contains("/usr/bin/env"), shellCommand)
+    }
+
+    func testScheduledNpxAutoConfirmAddsYesAndEnvironment() throws {
+        let job = ScriptJob(
+            name: "npx-auto",
+            command: "npx create-example",
+            schedule: .atLogin
+        )
+
+        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job))
+        XCTAssertEqual(spec.programArguments, ["/usr/bin/env", "npx", "--yes", "create-example"])
+        XCTAssertEqual(spec.environment["npm_config_yes"], "true")
+    }
+
     private func tempDir() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

@@ -65,7 +65,8 @@ struct AutomateCLI {
         let invocation = CommandLineParser.normalized(commandText: command, argumentsText: argumentsText)
         let workingDirectory = try option("--cwd")
         let requiresAdministratorPrivileges = take("--sudo")
-        let job = ScriptJob(name: name, command: invocation.command, arguments: invocation.arguments, workingDirectory: workingDirectory, requiresAdministratorPrivileges: requiresAdministratorPrivileges, schedule: schedule)
+        let inputPolicy = try parseInputPolicy()
+        let job = ScriptJob(name: name, command: invocation.command, arguments: invocation.arguments, workingDirectory: workingDirectory, requiresAdministratorPrivileges: requiresAdministratorPrivileges, inputPolicy: inputPolicy, schedule: schedule)
         try store.add(job)
         print(String(format: localizer.text("job.added"), name))
     }
@@ -88,6 +89,7 @@ struct AutomateCLI {
         if let workingDirectory = try option("--cwd") { job.workingDirectory = workingDirectory }
         if take("--sudo") { job.requiresAdministratorPrivileges = true }
         if take("--no-sudo") { job.requiresAdministratorPrivileges = false }
+        if containsInputFlag { job.inputPolicy = try parseInputPolicy(existing: job.inputPolicy) }
         if containsScheduleFlag {
             let schedule = try parseSchedulePreset()
             try schedule.validate()
@@ -110,8 +112,11 @@ struct AutomateCLI {
     }
 
     mutating func runJob(store: JobStore, logStore: RunLogStore, localizer: Localizer) throws {
-        guard let name = popValue(), let job = try store.find(nameOrID: name) else { throw CLIError(description: "Usage: automate run <name>") }
-        let record = try ScriptRunner(logStore: logStore).run(job)
+        guard let name = popValue(), let job = try store.find(nameOrID: name) else { throw CLIError(description: "Usage: automate run <name> [--answer <text>|--choice <label-or-id>]") }
+        let answer = try option("--answer")
+        let choice = try option("--choice")
+        let selection = (answer != nil || choice != nil) ? ScriptRunInputSelection(answer: answer, choiceLabel: choice) : nil
+        let record = try ScriptRunner(logStore: logStore).run(job, inputSelection: selection)
         print(String(format: localizer.text("run.completed"), record.exitCode))
         if let path = record.stdoutPath { print("stdout: \(path)") }
         if let path = record.stderrPath { print("stderr: \(path)") }
@@ -160,6 +165,33 @@ struct AutomateCLI {
         return args.contains { flags.contains($0) }
     }
 
+    var containsInputFlag: Bool {
+        let flags = ["--answer", "--default-answer", "--answer-choice", "--default-choice", "--input-required", "--input-optional", "--no-input"]
+        return args.contains { flags.contains($0) }
+    }
+
+    mutating func parseInputPolicy(existing: ScriptInputPolicy = .none) throws -> ScriptInputPolicy {
+        if take("--no-input") { return .none }
+        var policy = existing
+        if let answer = try option("--answer") ?? (try option("--default-answer")) {
+            policy.defaultAnswer = answer
+            if policy.requirement == .none { policy.requirement = .optional }
+        }
+        while let rawChoice = try option("--answer-choice") {
+            let parts = rawChoice.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2 else { throw CLIError(description: "Invalid --answer-choice. Use label=value") }
+            policy.answerChoices.append(ScriptAnswerChoice(label: String(parts[0]), value: String(parts[1])))
+            if policy.requirement == .none { policy.requirement = .optional }
+        }
+        if let defaultChoice = try option("--default-choice") {
+            policy.defaultChoiceID = defaultChoice
+            if policy.requirement == .none { policy.requirement = .optional }
+        }
+        if take("--input-required") { policy.requirement = .required }
+        if take("--input-optional") { policy.requirement = .optional }
+        return policy
+    }
+
     mutating func take(_ flag: String) -> Bool {
         guard let i = args.firstIndex(of: flag) else { return false }
         args.remove(at: i)
@@ -193,12 +225,12 @@ struct AutomateCLI {
     Global: --store <path> --lang en|ko
     Commands:
       list
-      add <name> --cmd <command> [--args "..."] [--cwd <path>] [--sudo] [--manual|--at-login|--every-minutes 5|10|15|30|--hourly <minute>|--daily HH:mm|--weekly mon HH:mm|--monthly <day> HH:mm]
-      edit <name-or-id> [--name <new-name>] [--cmd <command>] [--args "..."] [--cwd <path>] [--sudo|--no-sudo] [schedule preset]
+      add <name> --cmd <command> [--args "..."] [--cwd <path>] [--sudo] [--answer <text>|--answer-choice label=value --default-choice <label>] [--input-required] [--manual|--at-login|--every-minutes 5|10|15|30|--hourly <minute>|--daily HH:mm|--weekly mon HH:mm|--monthly <day> HH:mm]
+      edit <name-or-id> [--name <new-name>] [--cmd <command>] [--args "..."] [--cwd <path>] [--sudo|--no-sudo] [--answer <text>|--answer-choice label=value --default-choice <label>|--no-input] [schedule preset]
       remove <name>
       enable <name>
       disable <name>
-      run <name>
+      run <name> [--answer <text>|--choice <label-or-id>]
       logs <name>
       sync [--dry-run|--apply]
       doctor
