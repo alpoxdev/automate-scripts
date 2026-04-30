@@ -72,6 +72,7 @@ struct AppRelaunchInstaller {
         try FileManager.default.createDirectory(at: helperURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try helperScript.write(to: helperURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helperURL.path)
+        let logURL = try updateLogURL()
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -82,9 +83,20 @@ struct AppRelaunchInstaller {
             String(ProcessInfo.processInfo.processIdentifier),
             expectedVersion,
             "com.alpox.AutomateScripts",
-            "AutomateMenuBarApp"
+            "AutomateMenuBarApp",
+            logURL.path
         ]
         try process.run()
+    }
+
+    private func updateLogURL() throws -> URL {
+        let directory = FileManager.default
+            .urls(for: .libraryDirectory, in: .userDomainMask)
+            .first!
+            .appendingPathComponent("Logs", isDirectory: true)
+            .appendingPathComponent("AutomateScripts", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("update.log")
     }
 
     private var helperScript: String {
@@ -98,10 +110,29 @@ struct AppRelaunchInstaller {
         EXPECTED_VERSION="$4"
         EXPECTED_BUNDLE_ID="$5"
         EXPECTED_EXECUTABLE="$6"
+        LOG_PATH="$7"
+        mkdir -p "$(dirname "$LOG_PATH")"
+        exec >> "$LOG_PATH" 2>&1
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Starting Automate Scripts update helper"
+        echo "App path: $APP_PATH"
+        echo "DMG path: $DMG_PATH"
+        echo "Expected version: $EXPECTED_VERSION"
 
-        while kill -0 "$APP_PID" 2>/dev/null; do
+        WAIT_COUNT=0
+        while kill -0 "$APP_PID" 2>/dev/null && [ "$WAIT_COUNT" -lt 75 ]; do
           sleep 0.2
+          WAIT_COUNT=$((WAIT_COUNT + 1))
         done
+        if kill -0 "$APP_PID" 2>/dev/null; then
+          echo "App process $APP_PID did not exit after 15s; sending TERM"
+          kill -TERM "$APP_PID" 2>/dev/null || true
+          sleep 2
+        fi
+        if kill -0 "$APP_PID" 2>/dev/null; then
+          echo "App process $APP_PID still alive; sending KILL"
+          kill -KILL "$APP_PID" 2>/dev/null || true
+          sleep 1
+        fi
 
         MOUNT_DIR="$(mktemp -d /tmp/AutomateScriptsUpdateMount.XXXXXX)"
         UPDATE_PATH="${APP_PATH}.update"
@@ -113,6 +144,7 @@ struct AppRelaunchInstaller {
         }
         trap cleanup EXIT
 
+        echo "Mounting update image"
         hdiutil attach "$DMG_PATH" -mountpoint "$MOUNT_DIR" -nobrowse -quiet
         SOURCE_APP="$(find "$MOUNT_DIR" -maxdepth 2 -name 'Automate Scripts.app' -type d | head -n 1)"
         if [ -z "$SOURCE_APP" ]; then
@@ -137,15 +169,19 @@ struct AppRelaunchInstaller {
         fi
         codesign --verify --deep --strict "$SOURCE_APP"
 
+        echo "Copying update into staging path"
         rm -rf "$UPDATE_PATH"
         ditto "$SOURCE_APP" "$UPDATE_PATH"
 
         if [ -d "$APP_PATH" ]; then
+          echo "Moving existing app to backup: $BACKUP_PATH"
           mv "$APP_PATH" "$BACKUP_PATH"
         fi
 
         if mv "$UPDATE_PATH" "$APP_PATH"; then
+          echo "Opening updated app"
           open "$APP_PATH"
+          echo "Update helper completed"
         else
           if [ -d "$BACKUP_PATH" ] && [ ! -d "$APP_PATH" ]; then
             mv "$BACKUP_PATH" "$APP_PATH"
