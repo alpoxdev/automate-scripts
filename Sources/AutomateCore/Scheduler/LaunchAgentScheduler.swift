@@ -1,18 +1,83 @@
+import Darwin
 import Foundation
+
+public protocol LaunchAgentControlling: Sendable {
+    func bootstrap(plistURL: URL) throws
+    func bootout(label: String) throws
+}
+
+public struct LaunchctlController: LaunchAgentControlling {
+    public init() {}
+
+    public func bootstrap(plistURL: URL) throws {
+        try runLaunchctl(arguments: ["bootstrap", userDomainTarget(), plistURL.path])
+    }
+
+    public func bootout(label: String) throws {
+        try runLaunchctl(arguments: ["bootout", "\(userDomainTarget())/\(label)"])
+    }
+
+    private func userDomainTarget() -> String {
+        "gui/\(getuid())"
+    }
+
+    private func runLaunchctl(arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = arguments
+
+        let stderr = Pipe()
+        process.standardError = stderr
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            let message = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw LaunchAgentSchedulerError.launchctlFailed(arguments: arguments, status: process.terminationStatus, message: message ?? "")
+        }
+    }
+}
+
+public enum LaunchAgentSchedulerError: Error, LocalizedError, Sendable {
+    case launchctlFailed(arguments: [String], status: Int32, message: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .launchctlFailed(let arguments, let status, let message):
+            let suffix = message.isEmpty ? "" : ": \(message)"
+            return "launchctl \(arguments.joined(separator: " ")) failed with status \(status)\(suffix)"
+        }
+    }
+}
 
 public final class LaunchAgentScheduler: SchedulerBackend, @unchecked Sendable {
     public let launchAgentsDirectory: URL
     public let runnerPath: String
     public let logDirectory: URL
+    public let reloadServices: Bool
+    private let launchController: any LaunchAgentControlling
 
     public init(
-        launchAgentsDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents", isDirectory: true),
+        launchAgentsDirectory: URL = LaunchAgentScheduler.defaultLaunchAgentsDirectory(),
         runnerPath: String = "/usr/bin/env",
-        logDirectory: URL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!.appendingPathComponent("AutomateScripts/Logs", isDirectory: true)
+        logDirectory: URL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!.appendingPathComponent("AutomateScripts/Logs", isDirectory: true),
+        reloadServices: Bool? = nil,
+        launchController: any LaunchAgentControlling = LaunchctlController()
     ) {
         self.launchAgentsDirectory = launchAgentsDirectory
         self.runnerPath = runnerPath
         self.logDirectory = logDirectory
+        self.reloadServices = reloadServices ?? Self.isDefaultLaunchAgentsDirectory(launchAgentsDirectory)
+        self.launchController = launchController
+    }
+
+    public static func defaultLaunchAgentsDirectory() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents", isDirectory: true)
+    }
+
+    private static func isDefaultLaunchAgentsDirectory(_ url: URL) -> Bool {
+        url.standardizedFileURL.path == defaultLaunchAgentsDirectory().standardizedFileURL.path
     }
 
     public func sync(jobs: [ScriptJob], dryRun: Bool = false) throws -> SchedulerSyncPlan {
@@ -28,14 +93,23 @@ public final class LaunchAgentScheduler: SchedulerBackend, @unchecked Sendable {
         for spec in desiredSpecs {
             let url = plistURL(label: spec.label)
             plan.createdOrUpdated.append(spec.label)
-            if !dryRun { try write(spec: spec, to: url) }
+            if !dryRun {
+                try write(spec: spec, to: url)
+                if reloadServices {
+                    try? launchController.bootout(label: spec.label)
+                    try launchController.bootstrap(plistURL: url)
+                }
+            }
         }
 
         for url in existing {
             let label = url.deletingPathExtension().lastPathComponent
             if !desiredLabels.contains(label) {
                 plan.removed.append(label)
-                if !dryRun { try FileManager.default.removeItem(at: url) }
+                if !dryRun {
+                    if reloadServices { try? launchController.bootout(label: label) }
+                    try FileManager.default.removeItem(at: url)
+                }
             }
         }
 

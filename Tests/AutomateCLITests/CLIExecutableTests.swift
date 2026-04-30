@@ -34,6 +34,14 @@ final class CLIExecutableTests: XCTestCase {
         XCTAssertEqual(sync.status, 0)
         XCTAssertTrue(sync.stdout.contains("Dry run: create/update=1"), sync.stdout + sync.stderr)
 
+        let applySync = try runCLI(["--store", store, "--lang", "en", "sync", "--apply"])
+        XCTAssertEqual(applySync.status, 0, applySync.stdout + applySync.stderr)
+        XCTAssertTrue(applySync.stdout.contains("dryRun=false"), applySync.stdout + applySync.stderr)
+        let launchAgentsDir = dir.appendingPathComponent("LaunchAgents", isDirectory: true)
+        let managedPlists = try FileManager.default.contentsOfDirectory(at: launchAgentsDir, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "plist" && $0.lastPathComponent.hasPrefix("com.alpox.automate-scripts.job") }
+        XCTAssertEqual(managedPlists.count, 1)
+
         XCTAssertEqual(try runCLI(["--store", store, "remove", "backup2"]).status, 0)
     }
 
@@ -86,6 +94,22 @@ final class CLIExecutableTests: XCTestCase {
         let overrideStdoutPath = try XCTUnwrap(runOverride.stdout.split(separator: "\n").first { $0.hasPrefix("stdout: ") }?.dropFirst("stdout: ".count))
         let overrideOutput = try String(contentsOfFile: String(overrideStdoutPath), encoding: .utf8)
         XCTAssertEqual(overrideOutput.trimmingCharacters(in: .whitespacesAndNewlines), "answer=override")
+
+        let editChoices = try runCLI(["--store", store, "edit", "stdinjob", "--no-input"])
+        XCTAssertEqual(editChoices.status, 0, editChoices.stdout + editChoices.stderr)
+        let addChoices = try runCLI([
+            "--store", store, "edit", "stdinjob",
+            "--answer-choice", "yes=y",
+            "--answer-choice", "no=n",
+            "--default-choice", "no",
+            "--input-required"
+        ])
+        XCTAssertEqual(addChoices.status, 0, addChoices.stdout + addChoices.stderr)
+        let runChoice = try runCLI(["--store", store, "run", "stdinjob", "--choice", "yes"])
+        XCTAssertEqual(runChoice.status, 0, runChoice.stdout + runChoice.stderr)
+        let choiceStdoutPath = try XCTUnwrap(runChoice.stdout.split(separator: "\n").first { $0.hasPrefix("stdout: ") }?.dropFirst("stdout: ".count))
+        let choiceOutput = try String(contentsOfFile: String(choiceStdoutPath), encoding: .utf8)
+        XCTAssertEqual(choiceOutput.trimmingCharacters(in: .whitespacesAndNewlines), "answer=y")
     }
 
     private func runCLI(_ arguments: [String]) throws -> (status: Int32, stdout: String, stderr: String) {

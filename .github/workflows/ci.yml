@@ -14,8 +14,58 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  version:
+    name: Resolve release version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve next version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_REF" != "refs/heads/deploy/prod" ]; then
+            echo "tag=v0.0.0-dev" >> "$GITHUB_OUTPUT"
+            echo "version=0.0.0" >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Using development package version for non-release workflow."
+            exit 0
+          fi
+
+          existing_head_tag="$(git tag --points-at "$GITHUB_SHA" --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)"
+          if [ -n "$existing_head_tag" ]; then
+            echo "tag=$existing_head_tag" >> "$GITHUB_OUTPUT"
+            echo "version=${existing_head_tag#v}" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Using existing tag on HEAD: $existing_head_tag"
+            exit 0
+          fi
+
+          latest_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)"
+          if [ -z "$latest_tag" ]; then
+            next_tag="v0.1.0"
+          else
+            version="${latest_tag#v}"
+            IFS='.' read -r major minor patch <<< "$version"
+            next_tag="v${major}.${minor}.$((patch + 1))"
+          fi
+
+          echo "tag=$next_tag" >> "$GITHUB_OUTPUT"
+          echo "version=${next_tag#v}" >> "$GITHUB_OUTPUT"
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "Resolved release tag: $next_tag"
+
   swift:
     name: Build, test, and package ${{ matrix.suffix }} DMG
+    needs: version
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -44,12 +94,16 @@ jobs:
         shell: bash
         env:
           ARCH_SUFFIX: ${{ matrix.suffix }}
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
+          APP_VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
 
           bin_path="$(swift build -c release --show-bin-path)"
           staging="dist/dmg-root"
           app="$staging/Automate Scripts.app"
+          dmg_name="AutomateScripts-${RELEASE_TAG}-macos-${ARCH_SUFFIX}.dmg"
+          build_number="${GITHUB_RUN_NUMBER:-1}"
 
           rm -rf dist
           mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$staging/bin"
@@ -62,7 +116,7 @@ jobs:
             cp -R "$bin_path/AutomateScripts_AutomateMenuBarApp.bundle/"* "$app/Contents/Resources/"
           fi
 
-          cat > "$app/Contents/Info.plist" <<'PLIST'
+          cat > "$app/Contents/Info.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -80,9 +134,9 @@ jobs:
             <key>CFBundlePackageType</key>
             <string>APPL</string>
             <key>CFBundleShortVersionString</key>
-            <string>0.1.0</string>
+            <string>${APP_VERSION}</string>
             <key>CFBundleVersion</key>
-            <string>1</string>
+            <string>${build_number}</string>
             <key>LSMinimumSystemVersion</key>
             <string>13.0</string>
             <key>LSUIElement</key>
@@ -114,24 +168,27 @@ jobs:
             -srcfolder "$staging" \
             -ov \
             -format UDZO \
-            "dist/release/AutomateScripts-macos-${ARCH_SUFFIX}.dmg"
+            "dist/release/${dmg_name}"
+          (cd dist/release && shasum -a 256 "${dmg_name}" > "${dmg_name}.sha256")
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-dmg-${{ matrix.suffix }}
-          path: dist/release/AutomateScripts-macos-${{ matrix.suffix }}.dmg
+          path: |
+            dist/release/AutomateScripts-${{ needs.version.outputs.tag }}-macos-${{ matrix.suffix }}.dmg
+            dist/release/AutomateScripts-${{ needs.version.outputs.tag }}-macos-${{ matrix.suffix }}.dmg.sha256
           if-no-files-found: error
 
-  version:
-    name: Auto version and release
-    needs: swift
+  release:
+    name: Publish GitHub Release
+    needs:
+      - version
+      - swift
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/deploy/prod'
+    if: needs.version.outputs.release == 'true'
     permissions:
       contents: write
-    outputs:
-      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -144,60 +201,30 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Configure git author
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Resolve next version
-        id: version
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          existing_head_tag="$(git tag --points-at "$GITHUB_SHA" --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)"
-          if [ -n "$existing_head_tag" ]; then
-            echo "tag=$existing_head_tag" >> "$GITHUB_OUTPUT"
-            echo "created=false" >> "$GITHUB_OUTPUT"
-            echo "Using existing tag on HEAD: $existing_head_tag"
-            exit 0
-          fi
-
-          latest_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)"
-          if [ -z "$latest_tag" ]; then
-            next_tag="v0.1.0"
-          else
-            version="${latest_tag#v}"
-            IFS='.' read -r major minor patch <<< "$version"
-            next_tag="v${major}.${minor}.$((patch + 1))"
-          fi
-
-          git tag -a "$next_tag" -m "Release $next_tag" "$GITHUB_SHA"
-          git push origin "$next_tag"
-
-          echo "tag=$next_tag" >> "$GITHUB_OUTPUT"
-          echo "created=true" >> "$GITHUB_OUTPUT"
-          echo "Created release tag: $next_tag"
-
-      - name: Prepare release assets
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          for arch in arm64 x86_64; do
-            mv "dist/AutomateScripts-macos-${arch}.dmg" "dist/AutomateScripts-${TAG}-macos-${arch}.dmg"
-          done
-          find dist -type f -maxdepth 1 -name '*.dmg' -print -exec ls -lh {} \;
-
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.version.outputs.tag }}
+          TAG: ${{ needs.version.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
+
+          find dist -type f -maxdepth 1 \( -name '*.dmg' -o -name '*.sha256' \) -print -exec ls -lh {} \;
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            tag_target="$(git rev-list -n 1 "$TAG")"
+            if [ "$tag_target" != "$GITHUB_SHA" ]; then
+              echo "Tag $TAG already exists at $tag_target, not $GITHUB_SHA" >&2
+              exit 1
+            fi
+            echo "Using existing tag on HEAD: $TAG"
+          else
+            git tag -a "$TAG" -m "Release $TAG" "$GITHUB_SHA"
+            git push origin "$TAG"
+          fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release already exists for $TAG; uploading DMG assets."
@@ -208,4 +235,4 @@ jobs:
               --generate-notes
           fi
 
-          gh release upload "$TAG" dist/*.dmg --clobber
+          gh release upload "$TAG" dist/*.dmg dist/*.sha256 --clobber

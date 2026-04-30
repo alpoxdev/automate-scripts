@@ -97,12 +97,16 @@ struct MenuBarRootView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(localizer.text("app.name"))
                     .font(.system(size: 16, weight: .semibold))
+                Text(String(format: localizer.text("update.version"), model.appVersion.displayText))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
                 Text(model.displayMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer()
+            updateControl(localizer)
             Button {
                 model.reload()
             } label: {
@@ -113,6 +117,31 @@ struct MenuBarRootView: View {
             .help(localizer.text("common.reload"))
         }
         .padding(18)
+    }
+
+    @ViewBuilder
+    private func updateControl(_ localizer: Localizer) -> some View {
+        switch model.updateState {
+        case .available:
+            Button {
+                model.installAvailableUpdate()
+            } label: {
+                Label(localizer.text("update.button"), systemImage: "arrow.down.circle")
+            }
+            .controlSize(.small)
+            .buttonStyle(.borderedProminent)
+            .help(model.updateStatusText(localizer: localizer))
+        case .checking, .installing, .restarting:
+            ProgressView()
+                .controlSize(.small)
+                .help(model.updateStatusText(localizer: localizer))
+        case .failed, .noCompatibleAsset, .developmentBuild:
+            Image(systemName: "info.circle")
+                .foregroundStyle(.secondary)
+                .help(model.updateStatusText(localizer: localizer))
+        case .idle, .upToDate:
+            EmptyView()
+        }
     }
 
     private func summary(_ localizer: Localizer) -> some View {

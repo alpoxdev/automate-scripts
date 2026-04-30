@@ -131,7 +131,14 @@ struct AutomateCLI {
 
     mutating func sync(store: JobStore, localizer: Localizer) throws {
         let dryRun = args.contains("--dry-run") || !args.contains("--apply")
-        let scheduler = LaunchAgentScheduler(launchAgentsDirectory: (storeURL ?? JobStore.defaultFileURL()).deletingLastPathComponent().appendingPathComponent("LaunchAgents", isDirectory: true))
+        let scheduler: LaunchAgentScheduler
+        if let storeURL {
+            scheduler = LaunchAgentScheduler(
+                launchAgentsDirectory: storeURL.deletingLastPathComponent().appendingPathComponent("LaunchAgents", isDirectory: true)
+            )
+        } else {
+            scheduler = LaunchAgentScheduler()
+        }
         let plan = try scheduler.sync(jobs: store.list(), dryRun: dryRun)
         print(String(format: localizer.text("sync.dryRun"), plan.summary))
     }

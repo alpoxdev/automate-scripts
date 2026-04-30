@@ -59,6 +59,48 @@ final class ScheduleCompilerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: unmanaged.path))
     }
 
+    func testLaunchAgentSchedulerReloadsServicesWhenRequested() throws {
+        let dir = try tempDir()
+        let logs = dir.appendingPathComponent("logs", isDirectory: true)
+        let controller = RecordingLaunchController()
+        let scheduler = LaunchAgentScheduler(
+            launchAgentsDirectory: dir,
+            logDirectory: logs,
+            reloadServices: true,
+            launchController: controller
+        )
+        let job = ScriptJob(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000321")!,
+            name: "reloadable",
+            command: "/bin/echo",
+            schedule: .everyMinutes(5)
+        )
+
+        let applyPlan = try scheduler.sync(jobs: [job], dryRun: false)
+        let label = try XCTUnwrap(applyPlan.createdOrUpdated.first)
+        XCTAssertEqual(controller.bootedOutLabels, [label])
+        XCTAssertEqual(controller.bootstrappedPlistURLs, [dir.appendingPathComponent("\(label).plist")])
+
+        _ = try scheduler.sync(jobs: [], dryRun: false)
+        XCTAssertEqual(controller.bootedOutLabels, [label, label])
+    }
+
+    func testCustomLaunchAgentDirectoryDoesNotReloadServicesByDefault() throws {
+        let dir = try tempDir()
+        let controller = RecordingLaunchController()
+        let scheduler = LaunchAgentScheduler(
+            launchAgentsDirectory: dir,
+            logDirectory: dir.appendingPathComponent("logs"),
+            launchController: controller
+        )
+
+        let job = ScriptJob(name: "local-only", command: "/bin/echo", schedule: .atLogin)
+        _ = try scheduler.sync(jobs: [job], dryRun: false)
+
+        XCTAssertTrue(controller.bootedOutLabels.isEmpty)
+        XCTAssertTrue(controller.bootstrappedPlistURLs.isEmpty)
+    }
+
     func testPrivilegedLaunchAgentUsesNonInteractiveSudoAndDefaultWorkspace() throws {
         let job = ScriptJob(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000099")!,
@@ -124,6 +166,20 @@ final class ScheduleCompilerTests: XCTestCase {
         XCTAssertTrue(shellCommand.contains("printf %s"), shellCommand)
         XCTAssertTrue(shellCommand.contains("hello"), shellCommand)
         XCTAssertTrue(shellCommand.contains("/usr/bin/env"), shellCommand)
+        XCTAssertTrue(shellCommand.contains("exec '/usr/bin/env' '/bin/sh' '-c'"), shellCommand)
+    }
+
+    func testScheduledInputShellWrapperQuotesSingleQuotes() throws {
+        let job = ScriptJob(
+            name: "quoted-input",
+            command: "/bin/cat",
+            inputPolicy: ScriptInputPolicy(requirement: .required, defaultAnswer: "it\'s ok"),
+            schedule: .atLogin
+        )
+
+        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job))
+        let shellCommand = try XCTUnwrap(spec.programArguments.last)
+        XCTAssertTrue(shellCommand.contains("'it'\\''s ok\n'"), shellCommand)
     }
 
     func testScheduledNpxAutoConfirmAddsYesAndEnvironment() throws {
@@ -142,5 +198,18 @@ final class ScheduleCompilerTests: XCTestCase {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+}
+
+private final class RecordingLaunchController: LaunchAgentControlling, @unchecked Sendable {
+    private(set) var bootstrappedPlistURLs: [URL] = []
+    private(set) var bootedOutLabels: [String] = []
+
+    func bootstrap(plistURL: URL) throws {
+        bootstrappedPlistURLs.append(plistURL)
+    }
+
+    func bootout(label: String) throws {
+        bootedOutLabels.append(label)
     }
 }

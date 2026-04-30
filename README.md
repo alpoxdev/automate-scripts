@@ -44,7 +44,7 @@ Raw cron expressions are intentionally not accepted in the default UX. Use prese
 
 ## Security notes
 
-This app runs local commands on your Mac. Review every script before scheduling it. Avoid storing secrets in plain text environment variables.
+This app runs local commands on your Mac. Review every script before scheduling it. Avoid storing secrets in plain text environment variables. See [SECURITY.md](SECURITY.md).
 
 ## License
 

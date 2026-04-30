@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Automate Scripts Terminal Logo Drafts</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#f5f7fb; --card:rgba(255,255,255,.84); --text:#111827; --muted:#64748b; --line:rgba(15,23,42,.10); --accent:#06b6d4; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#090e1e; --card:rgba(16,24,40,.84); --text:#f8fafc; --muted:#94a3b8; --line:rgba(255,255,255,.12); --accent:#67e8f9; } }
+    * { box-sizing:border-box; } body { margin:0; min-height:100vh; padding:48px; font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; color:var(--text); background:radial-gradient(circle at 18% 8%, rgba(34,211,238,.14), transparent 28rem), radial-gradient(circle at 82% 0%, rgba(124,58,237,.15), transparent 28rem), var(--bg); }
+    header, .grid, .board, footer { max-width:1120px; margin-left:auto; margin-right:auto; }
+    header { margin-bottom:28px; } .eyebrow { color:var(--accent); font-size:13px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; } h1 { margin:8px 0 10px; font-size:clamp(32px,5vw,56px); line-height:1; letter-spacing:-.05em; } p { margin:0; color:var(--muted); font-size:17px; line-height:1.65; }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; } .card { background:var(--card); border:1px solid var(--line); border-radius:28px; padding:18px; box-shadow:0 24px 70px rgba(15,23,42,.12); backdrop-filter:blur(16px); }
+    .icon-wrap { display:grid; place-items:center; border-radius:22px; background:linear-gradient(180deg, rgba(255,255,255,.70), rgba(255,255,255,.20)); border:1px solid var(--line); padding:16px; } img.logo { width:100%; aspect-ratio:1; object-fit:contain; border-radius:22%; } h2 { font-size:21px; margin:18px 2px 6px; letter-spacing:-.02em; } .tag { display:inline-flex; margin:0 0 10px 2px; padding:6px 10px; border-radius:999px; background:rgba(6,182,212,.12); color:var(--accent); font-weight:800; font-size:12px; } .note { font-size:14px; color:var(--muted); }
+    .board { margin-top:22px; } .board img { width:100%; border-radius:28px; border:1px solid var(--line); box-shadow:0 24px 70px rgba(15,23,42,.12); } footer { margin-top:22px; color:var(--muted); font-size:13px; } code { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; } @media (max-width:860px){body{padding:28px}.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Automate Scripts · Terminal Logo Revisions</div>
+    <h1>3번 느낌 유지 + 터미널 CLI 아이콘 시안 · 2번 선택</h1>
+    <p>이전 3번의 미드나이트 블루 배경, 보라/시안 오빗, 실행 버튼 감성은 유지하고 중앙 오브젝트만 파일/문서에서 터미널/CLI 실행 메타포로 바꾼 리비전입니다. 현재 앱 로고는 흰색 외곽 프레임을 제거한 2번 CLI Prompt Ring 시안으로 적용했습니다.</p>
+  </header>
+  <main class="grid">
+    <section class="card"><div class="icon-wrap"><img class="logo" src="assets/terminal-logo-variants/image1.png" alt="Terminal Orbit Play logo draft"></div><h2>1. Terminal Orbit Play</h2><div class="tag">터미널 · 실행 · 오빗</div><p class="note">3번의 실행 버튼과 오빗 구성을 가장 직접적으로 유지하는 방향입니다.</p></section>
+    <section class="card"><div class="icon-wrap"><img class="logo" src="assets/terminal-logo-variants/image2.png" alt="CLI Prompt Ring logo draft"></div><h2>2. CLI Prompt Ring <span style="font-size:12px;color:var(--accent);vertical-align:middle">SELECTED</span></h2><div class="tag">선택됨 · CLI 프롬프트 · 반복</div><p class="note">터미널 프롬프트 느낌을 더 강하게 주되, 텍스트 없이 추상 도형으로만 처리합니다.</p></section>
+    <section class="card"><div class="icon-wrap"><img class="logo" src="assets/terminal-logo-variants/image3.png" alt="Console Tile Automation logo draft"></div><h2>3. Console Tile Automation</h2><div class="tag">콘솔 · 자동화 · 로그</div><p class="note">콘솔 패널과 실행 궤도를 결합해 자동화 앱 느낌을 가장 균형 있게 잡는 방향입니다.</p></section>
+  </main>
+  <section class="board"><img src="assets/terminal-logo-variants/board.png" alt="Generated terminal logo concept board"></section>
+  <footer>Selected app icon asset: <code>docs/assets/terminal-logo-variants/selected-app-icon.png</code><br>Prompt archive: <code>.hypercore/image-generation/automate-scripts-terminal-logo-variants/prompt.json</code></footer>
+</body>
+</html>
