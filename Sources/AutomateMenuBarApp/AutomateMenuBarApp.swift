@@ -159,6 +159,7 @@ final class MenuBarModel: ObservableObject {
         guard case .available(let release, let asset) = updateState else { return }
         let checksumAsset = releaseUpdater.checksumAsset(for: asset, in: release)
         updateState = .installing(release.tagName)
+        lastMessage = String(format: localizer.text("update.installing"), release.tagName)
         Task {
             do {
                 try await updateInstaller.downloadVerifyAndPrepareRelaunch(
