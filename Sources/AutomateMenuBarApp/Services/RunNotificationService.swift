@@ -1,5 +1,5 @@
 import AutomateCore
-import UserNotifications
+@preconcurrency import UserNotifications
 
 @MainActor
 final class RunNotificationService: NSObject, UNUserNotificationCenterDelegate {
