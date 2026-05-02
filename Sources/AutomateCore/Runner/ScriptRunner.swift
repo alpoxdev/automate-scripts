@@ -38,7 +38,10 @@ public final class ScriptRunner: @unchecked Sendable {
         process.currentDirectoryURL = workingDirectory
         var environment = ProcessInfo.processInfo.environment
         prepared.environment.forEach { environment[$0.key] = $0.value }
-        process.environment = environment
+        process.environment = CommandExecutionEnvironment.augmentedEnvironment(
+            for: prepared.invocation,
+            base: environment
+        )
 
         let stdout = Pipe()
         let stderr = Pipe()

@@ -40,6 +40,10 @@ public enum ScheduleCompiler {
         guard job.schedule != .manualOnly else { return nil }
         let invocation = CommandLineParser.normalized(commandText: job.command, arguments: job.arguments)
         let prepared = try CommandPreparation.prepare(invocation: invocation, job: job, context: .scheduled)
+        let environment = CommandExecutionEnvironment.augmentedEnvironment(
+            for: prepared.invocation,
+            base: prepared.environment
+        )
         let commandArguments = scheduledProgramArguments(prepared: prepared, runnerPath: runnerPath, includeRunner: !job.requiresAdministratorPrivileges)
         let programArguments: [String]
         if job.requiresAdministratorPrivileges {
@@ -51,7 +55,7 @@ public enum ScheduleCompiler {
             label: label(for: job),
             programArguments: programArguments,
             workingDirectory: job.workingDirectory ?? AppPaths.defaultWorkingDirectory().path,
-            environment: prepared.environment,
+            environment: environment,
             standardOutPath: logDirectory.map { "\($0)/\(job.id.uuidString)-stdout.log" },
             standardErrorPath: logDirectory.map { "\($0)/\(job.id.uuidString)-stderr.log" }
         )

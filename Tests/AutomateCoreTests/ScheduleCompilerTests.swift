@@ -192,6 +192,8 @@ final class ScheduleCompilerTests: XCTestCase {
         let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job))
         XCTAssertEqual(spec.programArguments, ["/usr/bin/env", "npx", "--yes", "create-example"])
         XCTAssertEqual(spec.environment["npm_config_yes"], "true")
+        XCTAssertTrue(spec.environment["PATH"]?.split(separator: ":").contains("/opt/homebrew/bin") == true)
+        XCTAssertTrue(spec.environment["PATH"]?.split(separator: ":").contains("/usr/local/bin") == true)
     }
 
     private func tempDir() throws -> URL {
