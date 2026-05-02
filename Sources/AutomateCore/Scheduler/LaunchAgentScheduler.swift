@@ -92,9 +92,15 @@ public final class LaunchAgentScheduler: SchedulerBackend, @unchecked Sendable {
 
         for spec in desiredSpecs {
             let url = plistURL(label: spec.label)
+            let desiredData = try Self.serializedPlistData(for: spec)
+            let existingData = (try? Data(contentsOf: url))
+            if existingData == desiredData {
+                plan.unchanged.append(spec.label)
+                continue
+            }
             plan.createdOrUpdated.append(spec.label)
             if !dryRun {
-                try write(spec: spec, to: url)
+                try write(data: desiredData, to: url)
                 if reloadServices {
                     try? launchController.bootout(label: spec.label)
                     try launchController.bootstrap(plistURL: url)
@@ -122,12 +128,19 @@ public final class LaunchAgentScheduler: SchedulerBackend, @unchecked Sendable {
     }
 
     public func write(spec: LaunchAgentSpec, to url: URL) throws {
-        let dict = ScheduleCompiler.propertyListDictionary(for: spec)
-        let data = try PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)
+        try write(data: Self.serializedPlistData(for: spec), to: url)
+    }
+
+    private func write(data: Data, to url: URL) throws {
         let tmp = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).tmp")
         try data.write(to: tmp, options: [.atomic])
         if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
         try FileManager.default.moveItem(at: tmp, to: url)
+    }
+
+    private static func serializedPlistData(for spec: LaunchAgentSpec) throws -> Data {
+        let dict = ScheduleCompiler.propertyListDictionary(for: spec)
+        return try PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)
     }
 
     private func managedPlistURLs() throws -> [URL] {

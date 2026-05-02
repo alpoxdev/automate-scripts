@@ -8,16 +8,18 @@ public struct SchedulerSyncPlan: Codable, Equatable, Sendable {
     public var createdOrUpdated: [String]
     public var removed: [String]
     public var skipped: [String]
+    public var unchanged: [String]
     public var dryRun: Bool
 
-    public init(createdOrUpdated: [String] = [], removed: [String] = [], skipped: [String] = [], dryRun: Bool) {
+    public init(createdOrUpdated: [String] = [], removed: [String] = [], skipped: [String] = [], unchanged: [String] = [], dryRun: Bool) {
         self.createdOrUpdated = createdOrUpdated
         self.removed = removed
         self.skipped = skipped
+        self.unchanged = unchanged
         self.dryRun = dryRun
     }
 
     public var summary: String {
-        "create/update=\(createdOrUpdated.count), remove=\(removed.count), skipped=\(skipped.count), dryRun=\(dryRun)"
+        "create/update=\(createdOrUpdated.count), remove=\(removed.count), unchanged=\(unchanged.count), skipped=\(skipped.count), dryRun=\(dryRun)"
     }
 }
