@@ -85,6 +85,41 @@ final class ScheduleCompilerTests: XCTestCase {
         XCTAssertEqual(controller.bootedOutLabels, [label, label])
     }
 
+    func testLaunchAgentSchedulerSkipsReloadWhenSpecUnchanged() throws {
+        let dir = try tempDir()
+        let logs = dir.appendingPathComponent("logs", isDirectory: true)
+        let controller = RecordingLaunchController()
+        let scheduler = LaunchAgentScheduler(
+            launchAgentsDirectory: dir,
+            logDirectory: logs,
+            reloadServices: true,
+            launchController: controller
+        )
+        let job = ScriptJob(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000654")!,
+            name: "stable",
+            command: "/bin/echo",
+            schedule: .hourly(minute: 0)
+        )
+
+        let firstPlan = try scheduler.sync(jobs: [job], dryRun: false)
+        let label = try XCTUnwrap(firstPlan.createdOrUpdated.first)
+        XCTAssertEqual(controller.bootstrappedPlistURLs.count, 1)
+        XCTAssertEqual(controller.bootedOutLabels, [label])
+
+        let plistURL = dir.appendingPathComponent("\(label).plist")
+        let mtimeBefore = try FileManager.default.attributesOfItem(atPath: plistURL.path)[.modificationDate] as? Date
+
+        let secondPlan = try scheduler.sync(jobs: [job], dryRun: false)
+        XCTAssertTrue(secondPlan.createdOrUpdated.isEmpty)
+        XCTAssertEqual(secondPlan.unchanged, [label])
+        XCTAssertEqual(controller.bootstrappedPlistURLs.count, 1, "unchanged spec must not trigger bootstrap")
+        XCTAssertEqual(controller.bootedOutLabels, [label], "unchanged spec must not trigger bootout")
+
+        let mtimeAfter = try FileManager.default.attributesOfItem(atPath: plistURL.path)[.modificationDate] as? Date
+        XCTAssertEqual(mtimeBefore, mtimeAfter, "plist must not be rewritten when content is unchanged")
+    }
+
     func testCustomLaunchAgentDirectoryDoesNotReloadServicesByDefault() throws {
         let dir = try tempDir()
         let controller = RecordingLaunchController()
