@@ -91,7 +91,7 @@ final class MenuBarModel: ObservableObject {
     @Published var updateState: AppUpdateState = .idle
     @Published var lastUpdateCheckedAt: Date?
 
-    static let updateCheckInterval: TimeInterval = 6 * 60 * 60
+    static let updateCheckInterval: TimeInterval = 60 * 60
     private var updateCheckTimer: Timer?
 
     let store = JobStore()
