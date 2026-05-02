@@ -52,23 +52,25 @@ struct JobListView: View {
                 .lineLimit(2)
                 .textSelection(.enabled)
 
-            HStack {
-                statusText(latest, running: running, localizer: localizer)
-                Spacer()
-                Button(localizer.text("common.logs")) {
-                    onLogs(job)
-                }
-                .controlSize(.small)
-                Button(localizer.text("common.edit")) { onEdit(job) }
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                HStack {
+                    statusText(latest, running: running, localizer: localizer, now: context.date)
+                    Spacer()
+                    Button(localizer.text("common.logs")) {
+                        onLogs(job)
+                    }
                     .controlSize(.small)
-                Button(localizer.text(job.enabled ? "common.disable" : "common.enable")) { model.toggle(job) }
+                    Button(localizer.text("common.edit")) { onEdit(job) }
+                        .controlSize(.small)
+                    Button(localizer.text(job.enabled ? "common.disable" : "common.enable")) { model.toggle(job) }
+                        .controlSize(.small)
+                    Button(role: .destructive) {
+                        model.delete(job)
+                    } label: {
+                        Text(localizer.text("job.delete"))
+                    }
                     .controlSize(.small)
-                Button(role: .destructive) {
-                    model.delete(job)
-                } label: {
-                    Text(localizer.text("job.delete"))
                 }
-                .controlSize(.small)
             }
         }
         .padding(14)
@@ -80,18 +82,23 @@ struct JobListView: View {
         .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
     }
 
-    private func statusText(_ record: RunRecord?, running: Bool, localizer: Localizer) -> some View {
+    private func statusText(_ record: RunRecord?, running: Bool, localizer: Localizer, now: Date) -> some View {
         Group {
             if running {
                 Label(localizer.text("job.running"), systemImage: "hourglass")
                     .foregroundStyle(.blue)
             } else if let record {
+                let status = localizer.runStatusPresentation(for: record, now: now)
                 if record.exitCode == 0 && !record.timedOut {
-                    Label(localizer.text("job.lastSuccess"), systemImage: "checkmark.seal")
+                    Label(status.label, systemImage: "checkmark.seal")
                         .foregroundStyle(.green)
+                        .help(status.detail)
+                        .accessibilityHint(Text(status.detail))
                 } else {
-                    Label(String(format: localizer.text("job.lastFailure"), record.exitCode), systemImage: "exclamationmark.triangle")
+                    Label(status.label, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.red)
+                        .help(status.detail)
+                        .accessibilityHint(Text(status.detail))
                 }
             } else {
                 Label(localizer.text("job.noRecentRuns"), systemImage: "clock")

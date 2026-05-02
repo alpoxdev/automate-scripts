@@ -27,6 +27,47 @@ final class SchedulePresetTests: XCTestCase {
         XCTAssertEqual(Localizer(language: .english).scheduleDescription(.daily(hour: 9, minute: 0)), "Every day at 09:00")
         XCTAssertEqual(Localizer(language: .korean).scheduleDescription(.weekly(weekday: .monday, hour: 8, minute: 30)), "매주 월요일 08:30")
     }
+
+    func testRelativeRunStatusIncludesElapsedTimeAndOutcome() {
+        let now = Date(timeIntervalSince1970: 1_800)
+        let record = RunRecord(
+            jobID: UUID(),
+            jobName: "backup",
+            startedAt: now.addingTimeInterval(-370),
+            finishedAt: now.addingTimeInterval(-125),
+            exitCode: 0,
+            stdoutPath: nil,
+            stderrPath: nil
+        )
+
+        let presentation = Localizer(language: .korean).runStatusPresentation(for: record, now: now, timeZone: TimeZone(secondsFromGMT: 0)!)
+        XCTAssertEqual(presentation.label, "2분 전 실행 성공")
+        XCTAssertTrue(presentation.detail.contains("마지막 실행:"))
+    }
+
+    func testRelativeRunStatusIncludesFailureCode() {
+        let now = Date(timeIntervalSince1970: 1_800)
+        let record = RunRecord(
+            jobID: UUID(),
+            jobName: "sync",
+            startedAt: now.addingTimeInterval(-10),
+            finishedAt: now.addingTimeInterval(-10),
+            exitCode: 127,
+            stdoutPath: nil,
+            stderrPath: nil
+        )
+
+        let presentation = Localizer(language: .korean).runStatusPresentation(for: record, now: now, timeZone: TimeZone(secondsFromGMT: 0)!)
+        XCTAssertEqual(presentation.label, "10초 전 실행 실패: 종료 코드 127")
+        XCTAssertTrue(presentation.detail.contains("마지막 실행:"))
+    }
+
+    func testRelativeRunTimeUsesHoursAndDays() {
+        let localizer = Localizer(language: .korean)
+        let now = Date(timeIntervalSince1970: 200_000)
+        XCTAssertEqual(localizer.relativeRunTime(since: now.addingTimeInterval(-3_600), now: now), "1시간 전")
+        XCTAssertEqual(localizer.relativeRunTime(since: now.addingTimeInterval(-172_800), now: now), "2일 전")
+    }
 }
 
 final class LocalizerCoverageTests: XCTestCase {
@@ -48,7 +89,7 @@ final class LocalizerCoverageTests: XCTestCase {
             "settings.backgroundMode", "settings.backgroundHelp", "logs.retentionDays", "logs.stashNow", "logs.stashPath", "logs.stashedSummary",
             "logs.title", "logs.historyTitle", "logs.back", "logs.runCount", "logs.allRuns", "logs.selectedRun", "logs.duration", "logs.noRuns", "logs.noRunsHelp", "logs.empty", "logs.stdout", "logs.stderr", "logs.reveal",
             "schedule.picker.title", "schedule.kind.manual", "schedule.kind.login", "schedule.kind.minutes", "schedule.kind.hourly", "schedule.kind.daily", "schedule.kind.weekly", "schedule.kind.monthly", "schedule.interval", "schedule.time", "schedule.weekday", "schedule.day", "schedule.cronHidden",
-            "job.added", "job.updated", "job.addNew", "job.delete", "job.running", "job.lastFailure", "job.lastSuccess", "job.noRecentRuns",
+            "job.added", "job.updated", "job.addNew", "job.delete", "job.running", "job.lastFailure", "job.lastSuccess", "job.lastFailureRelative", "job.lastSuccessRelative", "job.lastRunAt", "job.noRecentRuns", "time.justNow", "time.secondsAgo", "time.minutesAgo", "time.hoursAgo", "time.daysAgo",
             "run.exitCode", "run.jobExit", "run.chooseAnswerTitle", "run.chooseAnswerMessage", "run.stdout", "run.stderr", "sudo.authorizing", "sudo.ready", "status.ready", "language.english", "language.korean",
             "update.version", "update.idle", "update.checking", "update.upToDate", "update.available", "update.button", "update.installing", "update.noCompatibleAsset", "update.developmentBuild", "update.failed", "update.invalidVersion", "update.restartSoon"
         ]
