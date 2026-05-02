@@ -128,7 +128,7 @@ jobs:
             <key>CFBundleIconFile</key>
             <string>AutomateScripts</string>
             <key>CFBundleIdentifier</key>
-            <string>com.alpox.AutomateScripts</string>
+            <string>dev.alpox.AutomateScripts</string>
             <key>CFBundleName</key>
             <string>Automate Scripts</string>
             <key>CFBundlePackageType</key>
