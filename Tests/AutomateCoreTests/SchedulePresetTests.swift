@@ -90,7 +90,9 @@ final class LocalizerCoverageTests: XCTestCase {
             "logs.title", "logs.historyTitle", "logs.back", "logs.runCount", "logs.allRuns", "logs.selectedRun", "logs.duration", "logs.noRuns", "logs.noRunsHelp", "logs.empty", "logs.stdout", "logs.stderr", "logs.reveal",
             "schedule.picker.title", "schedule.kind.manual", "schedule.kind.login", "schedule.kind.minutes", "schedule.kind.hourly", "schedule.kind.daily", "schedule.kind.weekly", "schedule.kind.monthly", "schedule.interval", "schedule.time", "schedule.weekday", "schedule.day", "schedule.cronHidden",
             "job.added", "job.updated", "job.addNew", "job.delete", "job.running", "job.lastFailure", "job.lastSuccess", "job.lastFailureRelative", "job.lastSuccessRelative", "job.lastRunAt", "job.noRecentRuns", "time.justNow", "time.secondsAgo", "time.minutesAgo", "time.hoursAgo", "time.daysAgo",
-            "run.exitCode", "run.jobExit", "run.chooseAnswerTitle", "run.chooseAnswerMessage", "run.stdout", "run.stderr", "sudo.authorizing", "sudo.ready", "status.ready", "language.english", "language.korean",
+            "run.exitCode", "run.jobExit", "run.chooseAnswerTitle", "run.chooseAnswerMessage", "run.stdout", "run.stderr",
+            "notification.runSuccess.title", "notification.runSuccess.body", "notification.runFailure.title", "notification.runFailure.body", "notification.runTimedOut.body", "notification.runStartFailed.title", "notification.runStartFailed.body",
+            "sudo.authorizing", "sudo.ready", "status.ready", "language.english", "language.korean",
             "update.version", "update.idle", "update.checking", "update.upToDate", "update.available", "update.button", "update.installing", "update.noCompatibleAsset", "update.developmentBuild", "update.failed", "update.invalidVersion", "update.restartSoon"
         ]
         for language in AppLanguage.allCases {
