@@ -89,6 +89,10 @@ final class MenuBarModel: ObservableObject {
     @Published var language: AppLanguage = .system()
     @Published var settings: AppSettings
     @Published var updateState: AppUpdateState = .idle
+    @Published var lastUpdateCheckedAt: Date?
+
+    static let updateCheckInterval: TimeInterval = 6 * 60 * 60
+    private var updateCheckTimer: Timer?
 
     let store = JobStore()
     let logStore = RunLogStore()
@@ -121,6 +125,18 @@ final class MenuBarModel: ObservableObject {
         try? syncScheduler()
         authorizeSavedPrivilegedJobsIfNeeded()
         checkForUpdates()
+        startUpdateCheckTimer()
+    }
+
+    private func startUpdateCheckTimer() {
+        updateCheckTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: Self.updateCheckInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.checkForUpdates()
+            }
+        }
+        timer.tolerance = 60
+        updateCheckTimer = timer
     }
 
     func reload() {
@@ -155,10 +171,12 @@ final class MenuBarModel: ObservableObject {
                     case .invalidRemoteVersion(let tag):
                         self.updateState = .failed(String(format: self.localizer.text("update.invalidVersion"), tag))
                     }
+                    self.lastUpdateCheckedAt = Date()
                 }
             } catch {
                 await MainActor.run {
                     self.updateState = .failed(error.localizedDescription)
+                    self.lastUpdateCheckedAt = Date()
                 }
             }
         }
