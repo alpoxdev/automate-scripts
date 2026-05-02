@@ -57,6 +57,38 @@ struct SettingsView: View {
             }
 
             settingsCard {
+                Text(localizer.text("update.section"))
+                    .font(.caption.weight(.semibold))
+                infoRow(
+                    String(format: localizer.text("update.version"), model.appVersion.displayText),
+                    model.updateStatusText(localizer: localizer),
+                    icon: "arrow.down.app"
+                )
+                Text(String(format: localizer.text("update.lastChecked"), formattedLastChecked(localizer: localizer)))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Button {
+                        model.checkForUpdates()
+                    } label: {
+                        Label(localizer.text("update.checkNow"), systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .controlSize(.small)
+                    .disabled(model.updateState.isBusy)
+
+                    if case .available = model.updateState {
+                        Button {
+                            model.installAvailableUpdate()
+                        } label: {
+                            Label(localizer.text("update.button"), systemImage: "arrow.down.circle")
+                        }
+                        .controlSize(.small)
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
+
+            settingsCard {
                 Toggle(localizer.text("settings.backgroundMode"), isOn: $model.settings.runsInBackground)
                     .onChange(of: model.settings.runsInBackground) { _ in model.saveSettings() }
                 Text(localizer.text("settings.backgroundHelp"))
@@ -105,6 +137,16 @@ struct SettingsView: View {
     private func refreshLoginItemState() {
         loginItemState = loginItemService.state()
         launchAtLogin = loginItemState.isEnabled
+    }
+
+    private func formattedLastChecked(localizer: Localizer) -> String {
+        guard let date = model.lastUpdateCheckedAt else {
+            return localizer.text("update.lastCheckedNever")
+        }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 
     private func settingsCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {

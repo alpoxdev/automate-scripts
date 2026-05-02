@@ -241,6 +241,10 @@ public struct Localizer: Sendable {
             "update.failed": "Update failed: %@",
             "update.invalidVersion": "Release tag is not a semantic version: %@",
             "update.restartSoon": "Restarting to finish update…",
+            "update.section": "Updates",
+            "update.checkNow": "Check for updates",
+            "update.lastChecked": "Last checked: %@",
+            "update.lastCheckedNever": "Not checked yet",
             "error.rawCronUnsupported": "Raw cron expressions are not supported in the default UX. Use schedule presets."
         ],
         .korean: [
@@ -392,6 +396,10 @@ public struct Localizer: Sendable {
             "update.failed": "업데이트 실패: %@",
             "update.invalidVersion": "릴리즈 태그가 semantic version이 아닙니다: %@",
             "update.restartSoon": "업데이트 완료를 위해 다시 시작합니다…",
+            "update.section": "업데이트",
+            "update.checkNow": "지금 업데이트 확인",
+            "update.lastChecked": "마지막 확인: %@",
+            "update.lastCheckedNever": "아직 확인하지 않음",
             "error.rawCronUnsupported": "기본 UX에서는 cron 표현식을 직접 입력하지 않습니다. 스케줄 프리셋을 사용하세요."
         ]
     ]

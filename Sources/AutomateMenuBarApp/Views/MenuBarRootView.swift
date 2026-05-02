@@ -1,3 +1,4 @@
+import AppKit
 import AutomateCore
 import SwiftUI
 
@@ -138,11 +139,7 @@ struct MenuBarRootView: View {
 
     private func header(_ localizer: Localizer) -> some View {
         HStack(spacing: 12) {
-            ZStack {
-                Circle().fill(.blue.gradient)
-                Image(systemName: "bolt.fill").foregroundStyle(.white)
-            }
-            .frame(width: 34, height: 34)
+            headerIcon()
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(localizer.text("app.name"))
@@ -170,6 +167,23 @@ struct MenuBarRootView: View {
     }
 
     @ViewBuilder
+    private func headerIcon() -> some View {
+        if let appIcon = NSImage(named: "AutomateScriptsLogo") ?? NSImage(named: "AutomateScripts") {
+            Image(nsImage: appIcon)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 34, height: 34)
+        } else {
+            ZStack {
+                Circle().fill(.blue.gradient)
+                Image(systemName: "bolt.fill").foregroundStyle(.white)
+            }
+            .frame(width: 34, height: 34)
+        }
+    }
+
+    @ViewBuilder
     private func updateControl(_ localizer: Localizer) -> some View {
         switch model.updateState {
         case .available:
@@ -185,12 +199,15 @@ struct MenuBarRootView: View {
             ProgressView()
                 .controlSize(.small)
                 .help(model.updateStatusText(localizer: localizer))
-        case .failed, .noCompatibleAsset, .developmentBuild:
-            Image(systemName: "info.circle")
-                .foregroundStyle(.secondary)
-                .help(model.updateStatusText(localizer: localizer))
-        case .idle, .upToDate:
-            EmptyView()
+        case .failed, .noCompatibleAsset, .developmentBuild, .idle, .upToDate:
+            Button {
+                model.checkForUpdates()
+            } label: {
+                Label(localizer.text("update.checkNow"), systemImage: "arrow.triangle.2.circlepath")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+            .help(model.updateStatusText(localizer: localizer))
         }
     }
 
