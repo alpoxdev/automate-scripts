@@ -213,6 +213,54 @@ final class ScriptRunnerTests: XCTestCase {
         }
     }
 
+
+    func testRunnerFindsBareNpxInCommonUserBinWhenPathIsSparse() throws {
+        let dir = try tempDir()
+        let home = dir.appendingPathComponent("home", isDirectory: true)
+        let bin = home.appendingPathComponent(".local/bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let npx = bin.appendingPathComponent("npx")
+        try """
+        #!/bin/sh
+        printf 'npx-ok:%s\n' "$1"
+        """.write(to: npx, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: npx.path)
+
+        let job = ScriptJob(
+            name: "npx-user-bin",
+            command: "npx",
+            arguments: ["create-example"],
+            workingDirectory: dir.path,
+            environment: [
+                "HOME": home.path,
+                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"
+            ]
+        )
+
+        let record = try ScriptRunner(logStore: RunLogStore(directory: dir)).run(job)
+        XCTAssertEqual(record.exitCode, 0)
+        let stdout = try String(contentsOfFile: XCTUnwrap(record.stdoutPath), encoding: .utf8)
+        XCTAssertEqual(stdout.trimmingCharacters(in: .whitespacesAndNewlines), "npx-ok:--yes")
+    }
+
+    func testAugmentedSearchPathKeepsExistingPathFirstAndAddsNVMBins() throws {
+        let dir = try tempDir()
+        let nvmBin = dir
+            .appendingPathComponent(".nvm/versions/node/v20.11.1/bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: nvmBin, withIntermediateDirectories: true)
+
+        let path = CommandExecutionEnvironment.augmentedSearchPath(
+            existing: "/custom/bin:/usr/bin",
+            homeDirectory: dir.path
+        ).split(separator: ":").map(String.init)
+
+        XCTAssertEqual(path.prefix(2), ["/custom/bin", "/usr/bin"])
+        XCTAssertTrue(path.contains("/opt/homebrew/bin"), path.joined(separator: ":"))
+        XCTAssertTrue(path.contains("\(dir.path)/.local/bin"), path.joined(separator: ":"))
+        XCTAssertTrue(path.contains { $0.hasSuffix("/.nvm/versions/node/v20.11.1/bin") }, path.joined(separator: ":"))
+        XCTAssertEqual(path.filter { $0 == "/usr/bin" }.count, 1)
+    }
+
     func testNpxAutoConfirmationAddsYesAndEnvironment() throws {
         let job = ScriptJob(name: "npx", command: "npx", arguments: ["create-example"])
         let prepared = try CommandPreparation.prepare(invocation: CommandInvocation(command: "npx", arguments: job.arguments), job: job)

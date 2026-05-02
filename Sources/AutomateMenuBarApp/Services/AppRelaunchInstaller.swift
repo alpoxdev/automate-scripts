@@ -82,7 +82,7 @@ struct AppRelaunchInstaller {
             dmgURL.path,
             String(ProcessInfo.processInfo.processIdentifier),
             expectedVersion,
-            "com.alpox.AutomateScripts",
+            "dev.alpox.AutomateScripts",
             "AutomateMenuBarApp",
             logURL.path
         ]

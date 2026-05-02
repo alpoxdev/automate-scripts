@@ -159,7 +159,10 @@ actor SudoSession {
         exitURL: URL
     ) -> String {
         let tokens = prepared.invocation.command == "sudo" ? prepared.invocation.arguments : [prepared.invocation.command] + prepared.invocation.arguments
-        let environment = prepared.environment
+        let environment = CommandExecutionEnvironment.augmentedEnvironment(
+            for: prepared.invocation,
+            base: prepared.environment
+        )
             .sorted { $0.key < $1.key }
             .map { shellQuote("\($0.key)=\($0.value)") }
             .joined(separator: " ")

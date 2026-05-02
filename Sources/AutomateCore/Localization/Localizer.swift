@@ -25,6 +25,16 @@ public enum AppLanguage: String, Codable, CaseIterable, Sendable {
     }
 }
 
+public struct RunStatusPresentation: Equatable, Sendable {
+    public var label: String
+    public var detail: String
+
+    public init(label: String, detail: String) {
+        self.label = label
+        self.detail = detail
+    }
+}
+
 public struct Localizer: Sendable {
     public let language: AppLanguage
     public init(language: AppLanguage = .system()) { self.language = language }
@@ -43,6 +53,42 @@ public struct Localizer: Sendable {
         case .weekly(let weekday, let hour, let minute): String(format: text("schedule.weekly"), weekday.localized(language), hour, minute)
         case .monthly(let day, let hour, let minute): String(format: text("schedule.monthly"), day, hour, minute)
         }
+    }
+
+    public func runStatusPresentation(for record: RunRecord, now: Date = Date(), timeZone: TimeZone = .current) -> RunStatusPresentation {
+        let relative = relativeRunTime(since: record.finishedAt, now: now)
+        let label = if record.exitCode == 0 && !record.timedOut {
+            String(format: text("job.lastSuccessRelative"), relative)
+        } else {
+            String(format: text("job.lastFailureRelative"), relative, record.exitCode)
+        }
+        let detail = String(format: text("job.lastRunAt"), absoluteRunTime(record.finishedAt, timeZone: timeZone))
+        return RunStatusPresentation(label: label, detail: detail)
+    }
+
+    public func relativeRunTime(since date: Date, now: Date = Date()) -> String {
+        let elapsed = max(0, Int(now.timeIntervalSince(date).rounded(.down)))
+        switch elapsed {
+        case 0..<5:
+            return text("time.justNow")
+        case 5..<60:
+            return String(format: text("time.secondsAgo"), elapsed)
+        case 60..<3_600:
+            return String(format: text("time.minutesAgo"), max(1, elapsed / 60))
+        case 3_600..<86_400:
+            return String(format: text("time.hoursAgo"), max(1, elapsed / 3_600))
+        default:
+            return String(format: text("time.daysAgo"), max(1, elapsed / 86_400))
+        }
+    }
+
+    public func absoluteRunTime(_ date: Date, timeZone: TimeZone = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: language == .korean ? "ko_KR" : "en_US")
+        formatter.timeZone = timeZone
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .medium
+        return formatter.string(from: date)
     }
 
     public static let table: [AppLanguage: [String: String]] = [
@@ -156,13 +202,28 @@ public struct Localizer: Sendable {
             "job.running": "Running…",
             "job.lastFailure": "Last run failed with exit code %d",
             "job.lastSuccess": "Last run succeeded",
+            "job.lastFailureRelative": "Ran %@ — failed with exit code %d",
+            "job.lastSuccessRelative": "Ran %@ — succeeded",
+            "job.lastRunAt": "Last run: %@",
             "job.noRecentRuns": "No recent runs",
+            "time.justNow": "just now",
+            "time.secondsAgo": "%d seconds ago",
+            "time.minutesAgo": "%d minutes ago",
+            "time.hoursAgo": "%d hours ago",
+            "time.daysAgo": "%d days ago",
             "run.exitCode": "Exit code: %d",
             "run.jobExit": "%@ exited with code %d",
             "run.chooseAnswerTitle": "Choose input answer",
             "run.chooseAnswerMessage": "Select the answer to send to '%@'.",
             "run.stdout": "stdout: %@",
             "run.stderr": "stderr: %@",
+            "notification.runSuccess.title": "%@ finished",
+            "notification.runSuccess.body": "%@ completed successfully with exit code %d.",
+            "notification.runFailure.title": "%@ failed",
+            "notification.runFailure.body": "%@ finished with exit code %d.",
+            "notification.runTimedOut.body": "%@ timed out before completion with exit code %d.",
+            "notification.runStartFailed.title": "%@ could not start",
+            "notification.runStartFailed.body": "%@ could not start: %@",
             "sudo.authorizing": "Requesting administrator privileges…",
             "sudo.ready": "Administrator privileges are ready.",
             "status.ready": "Ready",
@@ -292,13 +353,28 @@ public struct Localizer: Sendable {
             "job.running": "실행 중…",
             "job.lastFailure": "최근 실행 실패: 종료 코드 %d",
             "job.lastSuccess": "최근 실행 성공",
+            "job.lastFailureRelative": "%@ 실행 실패: 종료 코드 %d",
+            "job.lastSuccessRelative": "%@ 실행 성공",
+            "job.lastRunAt": "마지막 실행: %@",
             "job.noRecentRuns": "최근 실행 없음",
+            "time.justNow": "방금 전",
+            "time.secondsAgo": "%d초 전",
+            "time.minutesAgo": "%d분 전",
+            "time.hoursAgo": "%d시간 전",
+            "time.daysAgo": "%d일 전",
             "run.exitCode": "종료 코드: %d",
             "run.jobExit": "%@ 작업이 종료 코드 %d로 끝났습니다",
             "run.chooseAnswerTitle": "입력 답변 선택",
             "run.chooseAnswerMessage": "'%@' 작업에 보낼 답변을 선택하세요.",
             "run.stdout": "표준 출력: %@",
             "run.stderr": "표준 오류: %@",
+            "notification.runSuccess.title": "%@ 완료",
+            "notification.runSuccess.body": "%@ 작업이 종료 코드 %d로 성공했습니다.",
+            "notification.runFailure.title": "%@ 실패",
+            "notification.runFailure.body": "%@ 작업이 종료 코드 %d로 끝났습니다.",
+            "notification.runTimedOut.body": "%@ 작업이 시간 초과로 종료 코드 %d를 반환했습니다.",
+            "notification.runStartFailed.title": "%@ 시작 실패",
+            "notification.runStartFailed.body": "%@ 작업을 시작하지 못했습니다: %@",
             "sudo.authorizing": "관리자 권한을 요청하는 중…",
             "sudo.ready": "관리자 권한이 준비되었습니다.",
             "status.ready": "준비됨",

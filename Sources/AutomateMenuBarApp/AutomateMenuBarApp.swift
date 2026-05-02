@@ -8,6 +8,14 @@ struct AutomateMenuBarApp: App {
 
     init() {
         NSApplication.shared.setActivationPolicy(.accessory)
+        Self.configureApplicationIcon()
+    }
+
+    private static func configureApplicationIcon() {
+        let image = NSImage(named: "AutomateScriptsLogo") ?? NSImage(named: "AutomateScripts")
+        if let image {
+            NSApplication.shared.applicationIconImage = image
+        }
     }
 
     var body: some Scene {
@@ -91,6 +99,7 @@ final class MenuBarModel: ObservableObject {
     private let sudoSession = SudoSession()
     private let releaseUpdater = GitHubReleaseUpdater()
     private let updateInstaller = AppRelaunchInstaller()
+    private let notificationService = RunNotificationService()
 
     var localizer: Localizer { Localizer(language: language) }
     var hasFailures: Bool { latestRecords.values.contains { $0.exitCode != 0 || $0.timedOut } }
@@ -302,11 +311,13 @@ final class MenuBarModel: ObservableObject {
                     self.latestRecords[job.id] = record
                     self.runningJobIDs.remove(job.id)
                     self.lastMessage = String(format: self.localizer.text("run.jobExit"), job.name, record.exitCode)
+                    self.notificationService.notifyRunFinished(record: record, localizer: self.localizer)
                 }
             } catch {
                 await MainActor.run {
                     self.runningJobIDs.remove(job.id)
                     self.lastMessage = error.localizedDescription
+                    self.notificationService.notifyRunStartFailed(job: job, error: error, localizer: self.localizer)
                 }
             }
         }
