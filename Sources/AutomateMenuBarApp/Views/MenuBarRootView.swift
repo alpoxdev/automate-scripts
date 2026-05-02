@@ -20,14 +20,9 @@ struct MenuBarRootView: View {
             summary(localizer)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
-            Picker("", selection: $panel) {
-                Text(localizer.text("panel.jobs")).tag(MenuPanel.jobs)
-                Text(localizer.text("panel.add")).tag(MenuPanel.add)
-                Text(localizer.text("panel.settings")).tag(MenuPanel.settings)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 12)
+            panelTabs(localizer)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 12)
 
             Divider()
             ScrollView {
@@ -42,6 +37,20 @@ struct MenuBarRootView: View {
                                 panel = .jobs
                             }
                         )
+                    } else if let editingJob {
+                        JobEditorView(
+                            localizer: localizer,
+                            job: editingJob,
+                            onCancel: {
+                                self.editingJob = nil
+                                panel = .jobs
+                            },
+                            onSave: { job in
+                                model.update(job)
+                                self.editingJob = nil
+                                panel = .jobs
+                            }
+                        )
                     } else {
                         switch panel {
                         case .jobs:
@@ -51,10 +60,12 @@ struct MenuBarRootView: View {
                                 JobListView(
                                     model: model,
                                     onEdit: { job in
+                                        logJob = nil
                                         editingJob = job
-                                        panel = .add
+                                        panel = .jobs
                                     },
                                     onLogs: { job in
+                                        editingJob = nil
                                         self.logJob = job
                                         panel = .jobs
                                     }
@@ -63,14 +74,12 @@ struct MenuBarRootView: View {
                         case .add:
                             JobEditorView(
                                 localizer: localizer,
-                                job: editingJob,
+                                job: nil,
                                 onCancel: {
-                                    editingJob = nil
                                     panel = .jobs
                                 },
                                 onSave: { job in
-                                    if editingJob == nil { model.add(job) } else { model.update(job) }
-                                    editingJob = nil
+                                    model.add(job)
                                     panel = .jobs
                                 }
                             )
@@ -84,6 +93,47 @@ struct MenuBarRootView: View {
             footer(localizer)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+
+    private func panelTabs(_ localizer: Localizer) -> some View {
+        HStack(spacing: 0) {
+            ForEach(MenuPanel.allCases) { item in
+                Button {
+                    selectPanel(item)
+                } label: {
+                    Text(tabTitle(for: item, localizer: localizer))
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .foregroundStyle(panel == item ? .white : .primary)
+                        .background(panel == item ? Color.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .help(tabTitle(for: item, localizer: localizer))
+            }
+        }
+        .padding(2)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func tabTitle(for panel: MenuPanel, localizer: Localizer) -> String {
+        switch panel {
+        case .jobs:
+            localizer.text("panel.jobs")
+        case .add:
+            localizer.text("panel.add")
+        case .settings:
+            localizer.text("panel.settings")
+        }
+    }
+
+    private func selectPanel(_ nextPanel: MenuPanel) {
+        logJob = nil
+        editingJob = nil
+        panel = nextPanel
     }
 
     private func header(_ localizer: Localizer) -> some View {
@@ -179,7 +229,7 @@ struct MenuBarRootView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button {
-                panel = .add
+                selectPanel(.add)
             } label: {
                 Label(localizer.text("job.addNew"), systemImage: "plus.circle.fill")
             }
