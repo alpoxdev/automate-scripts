@@ -114,9 +114,13 @@ temp/
 
 # OMX / agent runtime artifacts. These may include prompts, logs, local paths, and session state.
 .omx/
+.omc/
 .hypercore/
 .codex/
 .claude/
+
+# Local packaging staging output
+dist/
 
 # Editors / IDEs
 .vscode/
