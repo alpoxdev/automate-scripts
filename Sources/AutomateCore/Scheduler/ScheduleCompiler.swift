@@ -65,7 +65,7 @@ public enum ScheduleCompiler {
         case .atLogin:
             spec.runAtLoad = true
         case .everyMinutes(let minutes):
-            spec.startInterval = minutes * 60
+            spec.startCalendarInterval = calendarIntervals(everyMinutes: minutes)
         case .hourly(let minute):
             spec.startCalendarInterval = [["Minute": minute]]
         case .daily(let hour, let minute):
@@ -76,6 +76,10 @@ public enum ScheduleCompiler {
             spec.startCalendarInterval = [["Day": day, "Hour": hour, "Minute": minute]]
         }
         return spec
+    }
+
+    private static func calendarIntervals(everyMinutes minutes: Int) -> [[String: Int]] {
+        stride(from: 0, to: 60, by: minutes).map { ["Minute": $0] }
     }
 
     private static func scheduledProgramArguments(prepared: PreparedCommand, runnerPath: String, includeRunner: Bool) -> [String] {

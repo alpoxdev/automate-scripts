@@ -132,7 +132,7 @@ struct RunHistoryView: View {
             Image(systemName: failed ? "xmark.circle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(failed ? .red : .green)
             VStack(alignment: .leading, spacing: 2) {
-                Text(record.startedAt.formatted(date: .abbreviated, time: .standard))
+                Text(localizer.runHistoryTimestamp(record.startedAt))
                     .font(.caption.weight(.semibold))
                 Text(String(format: localizer.text("run.exitCode"), record.exitCode))
                     .font(.caption2)
@@ -157,7 +157,7 @@ struct RunHistoryView: View {
                 Text(localizer.text("logs.selectedRun"))
                     .font(.headline)
                 Spacer()
-                Text(record.startedAt.formatted(date: .abbreviated, time: .standard))
+                Text(localizer.runHistoryTimestamp(record.startedAt))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
