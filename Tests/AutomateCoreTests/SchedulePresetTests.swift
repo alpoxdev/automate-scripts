@@ -68,6 +68,22 @@ final class SchedulePresetTests: XCTestCase {
         XCTAssertEqual(localizer.relativeRunTime(since: now.addingTimeInterval(-3_600), now: now), "1시간 전")
         XCTAssertEqual(localizer.relativeRunTime(since: now.addingTimeInterval(-172_800), now: now), "2일 전")
     }
+
+    func testRunHistoryTimestampUsesKoreanExpressionWhenLanguageIsKorean() {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = TimeZone(identifier: "Asia/Seoul")
+        components.year = 2026
+        components.month = 5
+        components.day = 4
+        components.hour = 20
+        components.minute = 51
+        components.second = 6
+        let date = components.date!
+
+        let formatted = Localizer(language: .korean).runHistoryTimestamp(date, timeZone: TimeZone(identifier: "Asia/Seoul")!)
+        XCTAssertEqual(formatted, "2026년 5월 4일 오후 8시 51분")
+    }
 }
 
 final class LocalizerCoverageTests: XCTestCase {

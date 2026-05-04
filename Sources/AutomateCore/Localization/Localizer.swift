@@ -91,6 +91,20 @@ public struct Localizer: Sendable {
         return formatter.string(from: date)
     }
 
+    public func runHistoryTimestamp(_ date: Date, timeZone: TimeZone = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: language == .korean ? "ko_KR" : "en_US")
+        formatter.timeZone = timeZone
+        switch language {
+        case .korean:
+            formatter.dateFormat = "yyyy년 M월 d일 a h시 m분"
+        case .english:
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .medium
+        }
+        return formatter.string(from: date)
+    }
+
     public static let table: [AppLanguage: [String: String]] = [
         .english: [
             "app.name": "Automate Scripts",

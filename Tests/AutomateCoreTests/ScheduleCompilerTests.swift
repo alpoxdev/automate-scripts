@@ -14,6 +14,45 @@ final class ScheduleCompilerTests: XCTestCase {
         XCTAssertNil(try ScheduleCompiler.compile(job: job))
     }
 
+    func testEveryTenMinutesCompilesToCronAlignedCalendarMinutes() throws {
+        let job = ScriptJob(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000010")!,
+            name: "ten-minute-cron",
+            command: "/bin/echo",
+            schedule: .everyMinutes(10)
+        )
+
+        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job, logDirectory: "/tmp/logs"))
+        XCTAssertNil(spec.startInterval)
+        XCTAssertEqual(
+            spec.startCalendarInterval,
+            [["Minute": 0], ["Minute": 10], ["Minute": 20], ["Minute": 30], ["Minute": 40], ["Minute": 50]]
+        )
+
+        let plist = ScheduleCompiler.propertyListDictionary(for: spec)
+        XCTAssertNil(plist["StartInterval"])
+        XCTAssertEqual(
+            plist["StartCalendarInterval"] as? [[String: Int]],
+            [["Minute": 0], ["Minute": 10], ["Minute": 20], ["Minute": 30], ["Minute": 40], ["Minute": 50]]
+        )
+    }
+
+    func testEveryMinutesPresetsUseCalendarBoundariesInsteadOfLoadRelativeIntervals() throws {
+        let expectations: [(minutes: Int, boundaries: [[String: Int]])] = [
+            (5, stride(from: 0, to: 60, by: 5).map { ["Minute": $0] }),
+            (10, stride(from: 0, to: 60, by: 10).map { ["Minute": $0] }),
+            (15, stride(from: 0, to: 60, by: 15).map { ["Minute": $0] }),
+            (30, stride(from: 0, to: 60, by: 30).map { ["Minute": $0] })
+        ]
+
+        for expectation in expectations {
+            let job = ScriptJob(name: "every-\(expectation.minutes)", command: "/bin/echo", schedule: .everyMinutes(expectation.minutes))
+            let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job))
+            XCTAssertNil(spec.startInterval, "Every \(expectation.minutes) minutes must not be relative to launch/load time.")
+            XCTAssertEqual(spec.startCalendarInterval, expectation.boundaries)
+        }
+    }
+
     func testLaunchAgentSchedulerDryRunOnlyManagesOwnLabels() throws {
         let dir = try tempDir()
         let scheduler = LaunchAgentScheduler(launchAgentsDirectory: dir, logDirectory: dir.appendingPathComponent("logs"))

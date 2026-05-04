@@ -13,14 +13,14 @@ final class CLIExecutableTests: XCTestCase {
 
         XCTAssertEqual(try runCLI(["--store", store, "--lang", "en", "add", "backup", "--cmd", script.path, "--daily", "09:00"]).status, 0)
 
-        let edit = try runCLI(["--store", store, "--lang", "en", "edit", "backup", "--name", "backup2", "--weekly", "mon", "08:30"])
+        let edit = try runCLI(["--store", store, "--lang", "en", "edit", "backup", "--name", "backup2", "--every-minutes", "10"])
         XCTAssertEqual(edit.status, 0)
         XCTAssertTrue(edit.stdout.contains("Updated job 'backup2'."), edit.stdout + edit.stderr)
 
-        let list = try runCLI(["--store", store, "--lang", "ko", "list"])
+        let list = try runCLI(["--store", store, "--lang", "en", "list"])
         XCTAssertEqual(list.status, 0)
         XCTAssertTrue(list.stdout.contains("backup2 [enabled]"), list.stdout + list.stderr)
-        XCTAssertTrue(list.stdout.contains("매주 월요일 08:30"), list.stdout + list.stderr)
+        XCTAssertTrue(list.stdout.contains("Every 10 minutes"), list.stdout + list.stderr)
 
         let run = try runCLI(["--store", store, "--lang", "en", "run", "backup2"])
         XCTAssertEqual(run.status, 0)
@@ -41,6 +41,13 @@ final class CLIExecutableTests: XCTestCase {
         let managedPlists = try FileManager.default.contentsOfDirectory(at: launchAgentsDir, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "plist" && $0.lastPathComponent.hasPrefix("com.alpox.automate-scripts.job") }
         XCTAssertEqual(managedPlists.count, 1)
+        let plistData = try Data(contentsOf: try XCTUnwrap(managedPlists.first))
+        let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: plistData, format: nil) as? [String: Any])
+        XCTAssertNil(plist["StartInterval"])
+        XCTAssertEqual(
+            plist["StartCalendarInterval"] as? [[String: Int]],
+            [["Minute": 0], ["Minute": 10], ["Minute": 20], ["Minute": 30], ["Minute": 40], ["Minute": 50]]
+        )
 
         XCTAssertEqual(try runCLI(["--store", store, "remove", "backup2"]).status, 0)
     }

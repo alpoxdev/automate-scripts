@@ -122,7 +122,11 @@ final class MenuBarModel: ObservableObject {
         applyBackgroundMode()
         performLogMaintenance(showMessage: false)
         reload()
-        try? syncScheduler()
+        do {
+            try syncScheduler()
+        } catch {
+            lastMessage = error.localizedDescription
+        }
         authorizeSavedPrivilegedJobsIfNeeded()
         checkForUpdates()
         startUpdateCheckTimer()
