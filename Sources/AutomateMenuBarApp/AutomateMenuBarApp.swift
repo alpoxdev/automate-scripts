@@ -92,7 +92,9 @@ final class MenuBarModel: ObservableObject {
     @Published var lastUpdateCheckedAt: Date?
 
     static let updateCheckInterval: TimeInterval = 60 * 60
+    static let runLogRefreshInterval: TimeInterval = 30
     private var updateCheckTimer: Timer?
+    private var runLogRefreshTimer: Timer?
 
     let store = JobStore()
     let logStore = RunLogStore()
@@ -130,6 +132,7 @@ final class MenuBarModel: ObservableObject {
         authorizeSavedPrivilegedJobsIfNeeded()
         checkForUpdates()
         startUpdateCheckTimer()
+        startRunLogRefreshTimer()
     }
 
     private func startUpdateCheckTimer() {
@@ -143,14 +146,29 @@ final class MenuBarModel: ObservableObject {
         updateCheckTimer = timer
     }
 
+    private func startRunLogRefreshTimer() {
+        runLogRefreshTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: Self.runLogRefreshInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshLatestRecords()
+            }
+        }
+        timer.tolerance = 5
+        runLogRefreshTimer = timer
+    }
+
     func reload() {
         do {
             jobs = try store.list()
-            latestRecords = Dictionary(uniqueKeysWithValues: jobs.compactMap { job in
-                guard let record = try? logStore.records(for: job.id).first else { return nil }
-                return (job.id, record)
-            })
+            refreshLatestRecords()
         } catch { lastMessage = error.localizedDescription }
+    }
+
+    func refreshLatestRecords() {
+        latestRecords = Dictionary(uniqueKeysWithValues: jobs.compactMap { job in
+            guard let record = try? logStore.records(for: job.id).first else { return nil }
+            return (job.id, record)
+        })
     }
 
     func checkForUpdates() {

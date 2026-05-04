@@ -54,19 +54,22 @@ public enum LaunchAgentSchedulerError: Error, LocalizedError, Sendable {
 public final class LaunchAgentScheduler: SchedulerBackend, @unchecked Sendable {
     public let launchAgentsDirectory: URL
     public let runnerPath: String
+    public let storeURL: URL
     public let logDirectory: URL
     public let reloadServices: Bool
     private let launchController: any LaunchAgentControlling
 
     public init(
         launchAgentsDirectory: URL = LaunchAgentScheduler.defaultLaunchAgentsDirectory(),
-        runnerPath: String = "/usr/bin/env",
+        runnerPath: String = LaunchAgentScheduler.defaultRunnerPath(),
+        storeURL: URL = JobStore.defaultFileURL(),
         logDirectory: URL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!.appendingPathComponent("AutomateScripts/Logs", isDirectory: true),
         reloadServices: Bool? = nil,
         launchController: any LaunchAgentControlling = LaunchctlController()
     ) {
         self.launchAgentsDirectory = launchAgentsDirectory
         self.runnerPath = runnerPath
+        self.storeURL = storeURL
         self.logDirectory = logDirectory
         self.reloadServices = reloadServices ?? Self.isDefaultLaunchAgentsDirectory(launchAgentsDirectory)
         self.launchController = launchController
@@ -74,6 +77,27 @@ public final class LaunchAgentScheduler: SchedulerBackend, @unchecked Sendable {
 
     public static func defaultLaunchAgentsDirectory() -> URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents", isDirectory: true)
+    }
+
+    public static func defaultRunnerPath(bundle: Bundle = .main, arguments: [String] = CommandLine.arguments) -> String {
+        if bundle.bundleURL.pathExtension == "app" {
+            let bundledRunner = bundle.bundleURL
+                .appendingPathComponent("Contents", isDirectory: true)
+                .appendingPathComponent("MacOS", isDirectory: true)
+                .appendingPathComponent("automate")
+            if FileManager.default.fileExists(atPath: bundledRunner.path) {
+                return bundledRunner.path
+            }
+        }
+
+        if let executable = arguments.first {
+            let executableURL = URL(fileURLWithPath: executable)
+            if executableURL.lastPathComponent == "automate" {
+                return executableURL.path
+            }
+        }
+
+        return "/usr/local/bin/automate"
     }
 
     private static func isDefaultLaunchAgentsDirectory(_ url: URL) -> Bool {
@@ -85,7 +109,14 @@ public final class LaunchAgentScheduler: SchedulerBackend, @unchecked Sendable {
             try FileManager.default.createDirectory(at: launchAgentsDirectory, withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
         }
-        let desiredSpecs = try jobs.compactMap { try ScheduleCompiler.compile(job: $0, runnerPath: runnerPath, logDirectory: logDirectory.path) }
+        let desiredSpecs = try jobs.compactMap {
+            try ScheduleCompiler.compile(
+                job: $0,
+                runnerPath: runnerPath,
+                storePath: storeURL.path,
+                logDirectory: logDirectory.path
+            )
+        }
         let desiredLabels = Set(desiredSpecs.map(\.label))
         let existing = try managedPlistURLs()
         var plan = SchedulerSyncPlan(dryRun: dryRun)

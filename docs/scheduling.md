@@ -24,3 +24,9 @@ behavior cron-like and easy to verify from the generated LaunchAgent plist.
 Scheduler sync is idempotent: if the generated plist content has not changed,
 Automate Scripts leaves the plist loaded as-is instead of rewriting and
 re-bootstraping it.
+
+Scheduled LaunchAgents invoke the bundled `automate` runner with the saved job
+ID instead of executing the user command directly. This keeps scheduled runs on
+the same execution path as manual runs: stdout/stderr are captured per run,
+exit codes are written to `RunLogs/*.runs.json`, and the menu-bar job cards can
+show the latest scheduled success or failure.

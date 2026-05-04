@@ -134,7 +134,8 @@ struct AutomateCLI {
         let scheduler: LaunchAgentScheduler
         if let storeURL {
             scheduler = LaunchAgentScheduler(
-                launchAgentsDirectory: storeURL.deletingLastPathComponent().appendingPathComponent("LaunchAgents", isDirectory: true)
+                launchAgentsDirectory: storeURL.deletingLastPathComponent().appendingPathComponent("LaunchAgents", isDirectory: true),
+                storeURL: storeURL
             )
         } else {
             scheduler = LaunchAgentScheduler()

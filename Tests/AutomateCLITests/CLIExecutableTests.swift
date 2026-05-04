@@ -43,6 +43,9 @@ final class CLIExecutableTests: XCTestCase {
         XCTAssertEqual(managedPlists.count, 1)
         let plistData = try Data(contentsOf: try XCTUnwrap(managedPlists.first))
         let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: plistData, format: nil) as? [String: Any])
+        let programArguments = try XCTUnwrap(plist["ProgramArguments"] as? [String])
+        XCTAssertEqual(Array(programArguments.prefix(4)), [productsDirectory().appendingPathComponent("automate").path, "--store", store, "run"])
+        XCTAssertNotNil(UUID(uuidString: try XCTUnwrap(programArguments.last)))
         XCTAssertNil(plist["StartInterval"])
         XCTAssertEqual(
             plist["StartCalendarInterval"] as? [[String: Int]],
