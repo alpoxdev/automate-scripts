@@ -109,8 +109,9 @@ jobs:
           mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$staging/bin"
 
           cp "$bin_path/AutomateMenuBarApp" "$app/Contents/MacOS/AutomateMenuBarApp"
+          cp "$bin_path/automate" "$app/Contents/MacOS/automate"
           cp "$bin_path/automate" "$staging/bin/automate"
-          chmod +x "$app/Contents/MacOS/AutomateMenuBarApp" "$staging/bin/automate"
+          chmod +x "$app/Contents/MacOS/AutomateMenuBarApp" "$app/Contents/MacOS/automate" "$staging/bin/automate"
 
           if [ -d "$bin_path/AutomateScripts_AutomateMenuBarApp.bundle" ]; then
             cp -R "$bin_path/AutomateScripts_AutomateMenuBarApp.bundle/"* "$app/Contents/Resources/"

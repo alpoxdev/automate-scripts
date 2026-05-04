@@ -42,11 +42,16 @@ public enum CommandExecutionEnvironment: Sendable {
                 "\(homeDirectory)/.bun/bin",
                 "\(homeDirectory)/.yarn/bin",
                 "\(homeDirectory)/Library/pnpm",
-                "\(homeDirectory)/.cargo/bin"
+                "\(homeDirectory)/.cargo/bin",
+                "\(homeDirectory)/.volta/bin",
+                "\(homeDirectory)/.asdf/shims",
+                "\(homeDirectory)/.local/share/mise/shims"
             ])
             paths.append(contentsOf: nvmNodeBinPaths(homeDirectory: homeDirectory))
+            paths.append(contentsOf: fnmNodeBinPaths(homeDirectory: homeDirectory))
         }
 
+        paths.append(contentsOf: homebrewNodeBinPaths())
         paths.append(contentsOf: [
             "/opt/homebrew/bin",
             "/usr/local/bin",
@@ -71,9 +76,75 @@ public enum CommandExecutionEnvironment: Sendable {
 
         return versions
             .filter { url in
-                (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                isDirectory(url.appendingPathComponent("bin", isDirectory: true))
             }
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending }
             .map { $0.appendingPathComponent("bin", isDirectory: true).path }
+    }
+
+    private static func fnmNodeBinPaths(homeDirectory: String) -> [String] {
+        let roots = [
+            URL(fileURLWithPath: homeDirectory)
+                .appendingPathComponent(".fnm", isDirectory: true)
+                .appendingPathComponent("node-versions", isDirectory: true),
+            URL(fileURLWithPath: homeDirectory)
+                .appendingPathComponent(".local/share/fnm", isDirectory: true)
+                .appendingPathComponent("node-versions", isDirectory: true)
+        ]
+        return roots.flatMap { nodeVersionBinPaths(in: $0, binSuffix: ["installation", "bin"]) }
+    }
+
+    private static func homebrewNodeBinPaths() -> [String] {
+        let optRoots = [
+            URL(fileURLWithPath: "/opt/homebrew/opt", isDirectory: true),
+            URL(fileURLWithPath: "/usr/local/opt", isDirectory: true)
+        ]
+        var paths: [String] = []
+
+        for optRoot in optRoots {
+            guard let formulae = try? FileManager.default.contentsOfDirectory(
+                at: optRoot,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+
+            paths.append(contentsOf: formulae
+                .filter { formula in
+                    formula.lastPathComponent == "node" || formula.lastPathComponent.hasPrefix("node@")
+                }
+                .filter { formula in
+                    isDirectory(formula.appendingPathComponent("bin", isDirectory: true))
+                }
+                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending }
+                .map { $0.appendingPathComponent("bin", isDirectory: true).path })
+        }
+        return paths
+    }
+
+    private static func nodeVersionBinPaths(in versionsDirectory: URL, binSuffix: [String]) -> [String] {
+        guard let versions = try? FileManager.default.contentsOfDirectory(
+            at: versionsDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        return versions
+            .filter { url in
+                let bin = binSuffix.reduce(url) { partial, component in
+                    partial.appendingPathComponent(component, isDirectory: true)
+                }
+                return isDirectory(bin)
+            }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending }
+            .map { version in
+                binSuffix.reduce(version) { url, component in
+                    url.appendingPathComponent(component, isDirectory: true)
+                }.path
+            }
+    }
+
+    private static func isDirectory(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 }

@@ -34,7 +34,12 @@ public enum ScheduleCompiler {
         return "\(labelPrefix).\(safeName).\(job.id.uuidString.lowercased())"
     }
 
-    public static func compile(job: ScriptJob, runnerPath: String = "/usr/bin/env", logDirectory: String? = nil) throws -> LaunchAgentSpec? {
+    public static func compile(
+        job: ScriptJob,
+        runnerPath: String = "/usr/local/bin/automate",
+        storePath: String = JobStore.defaultFileURL().path,
+        logDirectory: String? = nil
+    ) throws -> LaunchAgentSpec? {
         guard job.enabled else { return nil }
         try job.schedule.validate()
         guard job.schedule != .manualOnly else { return nil }
@@ -44,16 +49,9 @@ public enum ScheduleCompiler {
             for: prepared.invocation,
             base: prepared.environment
         )
-        let commandArguments = scheduledProgramArguments(prepared: prepared, runnerPath: runnerPath, includeRunner: !job.requiresAdministratorPrivileges)
-        let programArguments: [String]
-        if job.requiresAdministratorPrivileges {
-            programArguments = ["/usr/bin/sudo", "-n"] + commandArguments
-        } else {
-            programArguments = commandArguments
-        }
         var spec = LaunchAgentSpec(
             label: label(for: job),
-            programArguments: programArguments,
+            programArguments: scheduledProgramArguments(job: job, runnerPath: runnerPath, storePath: storePath),
             workingDirectory: job.workingDirectory ?? AppPaths.defaultWorkingDirectory().path,
             environment: environment,
             standardOutPath: logDirectory.map { "\($0)/\(job.id.uuidString)-stdout.log" },
@@ -82,18 +80,8 @@ public enum ScheduleCompiler {
         stride(from: 0, to: 60, by: minutes).map { ["Minute": $0] }
     }
 
-    private static func scheduledProgramArguments(prepared: PreparedCommand, runnerPath: String, includeRunner: Bool) -> [String] {
-        let directArguments = [prepared.invocation.command] + prepared.invocation.arguments
-        let runnerArguments = [runnerPath] + directArguments
-        guard let standardInput = prepared.standardInput else {
-            return includeRunner ? runnerArguments : directArguments
-        }
-        let command = runnerArguments.map(shellQuote).joined(separator: " ")
-        return ["/bin/sh", "-c", "printf %s \(shellQuote(standardInput)) | exec \(command)"]
-    }
-
-    private static func shellQuote(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    private static func scheduledProgramArguments(job: ScriptJob, runnerPath: String, storePath: String) -> [String] {
+        [runnerPath, "--store", storePath, "run", job.id.uuidString]
     }
 
     public static func propertyListDictionary(for spec: LaunchAgentSpec) -> [String: Any] {

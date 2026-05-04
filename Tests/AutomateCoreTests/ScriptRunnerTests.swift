@@ -243,11 +243,20 @@ final class ScriptRunnerTests: XCTestCase {
         XCTAssertEqual(stdout.trimmingCharacters(in: .whitespacesAndNewlines), "npx-ok:--yes")
     }
 
-    func testAugmentedSearchPathKeepsExistingPathFirstAndAddsNVMBins() throws {
+    func testAugmentedSearchPathKeepsExistingPathFirstAndAddsNodeManagerBins() throws {
         let dir = try tempDir()
         let nvmBin = dir
             .appendingPathComponent(".nvm/versions/node/v20.11.1/bin", isDirectory: true)
+        let fnmBin = dir
+            .appendingPathComponent(".fnm/node-versions/v24.1.0/installation/bin", isDirectory: true)
+        let miseShims = dir
+            .appendingPathComponent(".local/share/mise/shims", isDirectory: true)
+        let voltaBin = dir
+            .appendingPathComponent(".volta/bin", isDirectory: true)
+        let asdfShims = dir
+            .appendingPathComponent(".asdf/shims", isDirectory: true)
         try FileManager.default.createDirectory(at: nvmBin, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: fnmBin, withIntermediateDirectories: true)
 
         let path = CommandExecutionEnvironment.augmentedSearchPath(
             existing: "/custom/bin:/usr/bin",
@@ -258,6 +267,10 @@ final class ScriptRunnerTests: XCTestCase {
         XCTAssertTrue(path.contains("/opt/homebrew/bin"), path.joined(separator: ":"))
         XCTAssertTrue(path.contains("\(dir.path)/.local/bin"), path.joined(separator: ":"))
         XCTAssertTrue(path.contains { $0.hasSuffix("/.nvm/versions/node/v20.11.1/bin") }, path.joined(separator: ":"))
+        XCTAssertTrue(path.contains(voltaBin.path), path.joined(separator: ":"))
+        XCTAssertTrue(path.contains(asdfShims.path), path.joined(separator: ":"))
+        XCTAssertTrue(path.contains(miseShims.path), path.joined(separator: ":"))
+        XCTAssertTrue(path.contains { $0.hasSuffix("/.fnm/node-versions/v24.1.0/installation/bin") }, path.joined(separator: ":"))
         XCTAssertEqual(path.filter { $0 == "/usr/bin" }.count, 1)
     }
 

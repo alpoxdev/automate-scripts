@@ -55,7 +55,14 @@ final class ScheduleCompilerTests: XCTestCase {
 
     func testLaunchAgentSchedulerDryRunOnlyManagesOwnLabels() throws {
         let dir = try tempDir()
-        let scheduler = LaunchAgentScheduler(launchAgentsDirectory: dir, logDirectory: dir.appendingPathComponent("logs"))
+        let storeURL = dir.appendingPathComponent("jobs.json")
+        let runnerPath = dir.appendingPathComponent("automate").path
+        let scheduler = LaunchAgentScheduler(
+            launchAgentsDirectory: dir,
+            runnerPath: runnerPath,
+            storeURL: storeURL,
+            logDirectory: dir.appendingPathComponent("logs")
+        )
         let jobs = [ScriptJob(name: "hourly", command: "/bin/echo", schedule: .hourly(minute: 10))]
         let plan = try scheduler.sync(jobs: jobs, dryRun: true)
         XCTAssertEqual(plan.createdOrUpdated.count, 1)
@@ -67,7 +74,14 @@ final class ScheduleCompilerTests: XCTestCase {
         let unmanaged = dir.appendingPathComponent("com.example.other.plist")
         try "not managed".write(to: unmanaged, atomically: true, encoding: .utf8)
         let logs = dir.appendingPathComponent("logs", isDirectory: true)
-        let scheduler = LaunchAgentScheduler(launchAgentsDirectory: dir, logDirectory: logs)
+        let storeURL = dir.appendingPathComponent("jobs.json")
+        let runnerPath = dir.appendingPathComponent("automate").path
+        let scheduler = LaunchAgentScheduler(
+            launchAgentsDirectory: dir,
+            runnerPath: runnerPath,
+            storeURL: storeURL,
+            logDirectory: logs
+        )
         let job = ScriptJob(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000123")!,
             name: "hourly",
@@ -87,7 +101,7 @@ final class ScheduleCompilerTests: XCTestCase {
         let plistData = try Data(contentsOf: plistURL)
         let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: plistData, format: nil) as? [String: Any])
         XCTAssertEqual(plist["Label"] as? String, label)
-        XCTAssertEqual(plist["ProgramArguments"] as? [String], ["/usr/bin/env", "/bin/echo", "hello"])
+        XCTAssertEqual(plist["ProgramArguments"] as? [String], [runnerPath, "--store", storeURL.path, "run", job.id.uuidString])
         XCTAssertEqual(plist["StartCalendarInterval"] as? [String: Int], ["Minute": 10])
         XCTAssertEqual(plist["StandardOutPath"] as? String, "\(logs.path)/\(job.id.uuidString)-stdout.log")
         XCTAssertEqual(plist["StandardErrorPath"] as? String, "\(logs.path)/\(job.id.uuidString)-stderr.log")
@@ -102,8 +116,11 @@ final class ScheduleCompilerTests: XCTestCase {
         let dir = try tempDir()
         let logs = dir.appendingPathComponent("logs", isDirectory: true)
         let controller = RecordingLaunchController()
+        let storeURL = dir.appendingPathComponent("jobs.json")
         let scheduler = LaunchAgentScheduler(
             launchAgentsDirectory: dir,
+            runnerPath: dir.appendingPathComponent("automate").path,
+            storeURL: storeURL,
             logDirectory: logs,
             reloadServices: true,
             launchController: controller
@@ -128,8 +145,11 @@ final class ScheduleCompilerTests: XCTestCase {
         let dir = try tempDir()
         let logs = dir.appendingPathComponent("logs", isDirectory: true)
         let controller = RecordingLaunchController()
+        let storeURL = dir.appendingPathComponent("jobs.json")
         let scheduler = LaunchAgentScheduler(
             launchAgentsDirectory: dir,
+            runnerPath: dir.appendingPathComponent("automate").path,
+            storeURL: storeURL,
             logDirectory: logs,
             reloadServices: true,
             launchController: controller
@@ -164,6 +184,8 @@ final class ScheduleCompilerTests: XCTestCase {
         let controller = RecordingLaunchController()
         let scheduler = LaunchAgentScheduler(
             launchAgentsDirectory: dir,
+            runnerPath: dir.appendingPathComponent("automate").path,
+            storeURL: dir.appendingPathComponent("jobs.json"),
             logDirectory: dir.appendingPathComponent("logs"),
             launchController: controller
         )
@@ -175,7 +197,7 @@ final class ScheduleCompilerTests: XCTestCase {
         XCTAssertTrue(controller.bootstrappedPlistURLs.isEmpty)
     }
 
-    func testPrivilegedLaunchAgentUsesNonInteractiveSudoAndDefaultWorkspace() throws {
+    func testScheduledLaunchAgentUsesAutomateRunnerAndDefaultWorkspace() throws {
         let job = ScriptJob(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000099")!,
             name: "root-task",
@@ -184,12 +206,14 @@ final class ScheduleCompilerTests: XCTestCase {
             schedule: .atLogin
         )
 
-        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job))
-        XCTAssertEqual(spec.programArguments, ["/usr/bin/sudo", "-n", "/usr/bin/id"])
+        let runnerPath = "/Applications/Automate Scripts.app/Contents/MacOS/automate"
+        let storePath = "/Users/example/Library/Application Support/AutomateScripts/jobs.json"
+        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job, runnerPath: runnerPath, storePath: storePath))
+        XCTAssertEqual(spec.programArguments, [runnerPath, "--store", storePath, "run", job.id.uuidString])
         XCTAssertEqual(spec.workingDirectory, AppPaths.defaultWorkingDirectory().path)
     }
 
-    func testLaunchAgentSplitsFullCommandBeforeSlashArgument() throws {
+    func testScheduledLaunchAgentUsesJobIDInsteadOfInliningCommand() throws {
         let job = ScriptJob(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000100")!,
             name: "skills",
@@ -197,18 +221,11 @@ final class ScheduleCompilerTests: XCTestCase {
             schedule: .atLogin
         )
 
-        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job))
-        XCTAssertEqual(spec.programArguments, [
-            "/usr/bin/env",
-            "npx",
-            "skills",
-            "add",
-            "alpoxdev/hypercore-business",
-            "--skill",
-            "*",
-            "-g",
-            "-y"
-        ])
+        let runnerPath = "/Applications/Automate Scripts.app/Contents/MacOS/automate"
+        let storePath = "/tmp/jobs.json"
+        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job, runnerPath: runnerPath, storePath: storePath))
+        XCTAssertEqual(spec.programArguments, [runnerPath, "--store", storePath, "run", job.id.uuidString])
+        XCTAssertFalse(spec.programArguments.contains("npx"))
     }
 
 
@@ -224,8 +241,9 @@ final class ScheduleCompilerTests: XCTestCase {
         }
     }
 
-    func testScheduledInputDefaultUsesShellWrapper() throws {
+    func testScheduledInputDefaultRoutesThroughAutomateRunner() throws {
         let job = ScriptJob(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000190")!,
             name: "scheduled-input",
             command: "/bin/sh",
             arguments: ["-c", "read answer; echo $answer"],
@@ -233,27 +251,23 @@ final class ScheduleCompilerTests: XCTestCase {
             schedule: .atLogin
         )
 
-        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job))
-        XCTAssertEqual(spec.programArguments.first, "/bin/sh")
-        XCTAssertEqual(spec.programArguments.dropFirst().first, "-c")
-        let shellCommand = try XCTUnwrap(spec.programArguments.last)
-        XCTAssertTrue(shellCommand.contains("printf %s"), shellCommand)
-        XCTAssertTrue(shellCommand.contains("hello"), shellCommand)
-        XCTAssertTrue(shellCommand.contains("/usr/bin/env"), shellCommand)
-        XCTAssertTrue(shellCommand.contains("exec '/usr/bin/env' '/bin/sh' '-c'"), shellCommand)
+        let runnerPath = "/Applications/Automate Scripts.app/Contents/MacOS/automate"
+        let storePath = "/tmp/jobs.json"
+        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job, runnerPath: runnerPath, storePath: storePath))
+        XCTAssertEqual(spec.programArguments, [runnerPath, "--store", storePath, "run", job.id.uuidString])
     }
 
-    func testScheduledInputShellWrapperQuotesSingleQuotes() throws {
+    func testScheduledInputDefaultDoesNotInlineAnswerInPlist() throws {
         let job = ScriptJob(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000191")!,
             name: "quoted-input",
             command: "/bin/cat",
             inputPolicy: ScriptInputPolicy(requirement: .required, defaultAnswer: "it\'s ok"),
             schedule: .atLogin
         )
 
-        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job))
-        let shellCommand = try XCTUnwrap(spec.programArguments.last)
-        XCTAssertTrue(shellCommand.contains("'it'\\''s ok\n'"), shellCommand)
+        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job, runnerPath: "/app/automate", storePath: "/tmp/jobs.json"))
+        XCTAssertFalse(spec.programArguments.contains("it\'s ok\n"))
     }
 
     func testScheduledNpxAutoConfirmAddsYesAndEnvironment() throws {
@@ -263,8 +277,8 @@ final class ScheduleCompilerTests: XCTestCase {
             schedule: .atLogin
         )
 
-        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job))
-        XCTAssertEqual(spec.programArguments, ["/usr/bin/env", "npx", "--yes", "create-example"])
+        let spec = try XCTUnwrap(ScheduleCompiler.compile(job: job, runnerPath: "/app/automate", storePath: "/tmp/jobs.json"))
+        XCTAssertEqual(spec.programArguments, ["/app/automate", "--store", "/tmp/jobs.json", "run", job.id.uuidString])
         XCTAssertEqual(spec.environment["npm_config_yes"], "true")
         XCTAssertTrue(spec.environment["PATH"]?.split(separator: ":").contains("/opt/homebrew/bin") == true)
         XCTAssertTrue(spec.environment["PATH"]?.split(separator: ":").contains("/usr/local/bin") == true)
